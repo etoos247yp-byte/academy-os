@@ -43,11 +43,9 @@ export function WeeklySchedule({ enrolledCourses }) {
                 <div key={`${day}-${period.id}`} className="h-8 relative border border-slate-50">
                   {course && (
                     <div className={`absolute inset-0.5 ${course.color.replace('text-', 'bg-').replace('100', '200')} rounded-sm opacity-90 flex items-center justify-center`}>
-                      {isStartBlock && (
-                        <span className="text-[9px] font-bold text-slate-900 truncate px-0.5 leading-tight">
-                          {course.title.split(' ')[0]}
-                        </span>
-                      )}
+                      <span className={`text-[9px] truncate px-0.5 leading-tight ${isStartBlock ? 'font-bold text-slate-900' : 'font-medium text-slate-500 opacity-60'}`}>
+                        {course.title.split(' ')[0]}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -135,7 +133,7 @@ export function BigSchedule({ enrolledCourses, pendingCourses = [] }) {
                         backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.05) 4px, rgba(0,0,0,0.05) 8px)'
                       } : {}}
                     >
-                      {isStartBlock && (
+                      {isStartBlock ? (
                         <>
                           <div className="flex items-center gap-1">
                             <span className={`text-xs font-bold ${isPending ? 'text-yellow-800' : course.color.split(' ')[1]}`}>
@@ -156,6 +154,12 @@ export function BigSchedule({ enrolledCourses, pendingCourses = [] }) {
                             </span>
                           </div>
                         </>
+                      ) : (
+                        <div className="flex items-center justify-center h-full">
+                          <span className={`text-[10px] opacity-40 text-center leading-tight ${isPending ? 'text-yellow-700' : course.color.split(' ')[1]}`}>
+                            {course.title}
+                          </span>
+                        </div>
                       )}
                     </div>
                   )}

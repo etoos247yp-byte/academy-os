@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { Check, X, Clock, AlertCircle } from 'lucide-react';
+import { Check, X, Clock, AlertCircle, Download } from 'lucide-react';
 import { subscribeToPendingEnrollments, approveEnrollment, rejectEnrollment, batchApproveEnrollments } from '../../lib/enrollmentService';
 import { getCourse } from '../../lib/courseService';
 import { getStudent } from '../../lib/studentService';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDateTime } from '../../lib/utils';
+import { exportToExcel } from '../../lib/excelUtils';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 export default function EnrollmentRequests() {
@@ -117,6 +118,26 @@ export default function EnrollmentRequests() {
     }
   };
 
+  const handleExportExcel = () => {
+    const columns = [
+      { key: 'studentName', header: '학생명' },
+      { key: 'studentPhone', header: '전화번호' },
+      { key: 'courseTitle', header: '강좌명' },
+      { key: 'instructor', header: '강사' },
+      { key: 'enrolledAt', header: '신청일시' },
+    ];
+    
+    const data = enrichedRequests.map(r => ({
+      studentName: r.student?.name || r.studentId,
+      studentPhone: r.student?.phone || '',
+      courseTitle: r.course?.title || r.courseId,
+      instructor: r.course?.instructor || '',
+      enrolledAt: r.enrolledAt
+    }));
+    
+    exportToExcel(data, columns, '신청대기목록');
+  };
+
   if (loading) {
     return <LoadingSpinner message="신청 목록 로딩 중..." />;
   }
@@ -133,15 +154,25 @@ export default function EnrollmentRequests() {
             </span>
           )}
         </h1>
-        {selectedIds.length > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={handleBatchApprove}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors"
+            onClick={handleExportExcel}
+            disabled={enrichedRequests.length === 0}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-slate-600 rounded-xl font-medium hover:bg-slate-50 transition-colors disabled:opacity-50"
           >
-            <Check className="w-4 h-4" />
-            {selectedIds.length}건 일괄 승인
+            <Download className="w-4 h-4" />
+            엑셀 다운로드
           </button>
-        )}
+          {selectedIds.length > 0 && (
+            <button
+              onClick={handleBatchApprove}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-xl font-medium hover:bg-green-700 transition-colors"
+            >
+              <Check className="w-4 h-4" />
+              {selectedIds.length}건 일괄 승인
+            </button>
+          )}
+        </div>
       </div>
 
       {enrichedRequests.length === 0 ? (

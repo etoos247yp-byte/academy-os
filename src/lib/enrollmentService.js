@@ -290,3 +290,21 @@ export const getEnrollmentsByCourse = async (courseId) => {
     ...doc.data()
   }));
 };
+
+/**
+ * Get ALL enrollments for a student (including rejected, cancelled)
+ * For viewing complete history
+ */
+export const getStudentAllEnrollments = async (studentId) => {
+  const enrollmentsQuery = query(
+    collection(db, 'enrollments'),
+    where('studentId', '==', studentId),
+    orderBy('enrolledAt', 'desc')
+  );
+  
+  const snapshot = await getDocs(enrollmentsQuery);
+  return snapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+};

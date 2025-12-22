@@ -15,6 +15,116 @@ import { db } from './firebase';
 import { generateStudentId } from './utils';
 
 /**
+ * Check if a student already exists
+ */
+export const checkStudentExists = async (name, phone) => {
+  const studentId = generateStudentId(name, phone);
+  const studentDoc = await getDoc(doc(db, 'students', studentId));
+  return studentDoc.exists() ? { id: studentId, ...studentDoc.data() } : null;
+};
+
+/**
+ * Batch create students from Excel upload
+ * @param {Array} studentsData - Array of {name, phone, birthDate}
+ * @param {string} adminUid - Admin user ID
+ * @param {string} duplicateAction - 'skip' | 'overwrite' | object with individual choices
+ * @returns {Array} Results with success/failure status for each student
+ */
+export const batchCreateStudents = async (studentsData, adminUid, duplicateAction = 'skip') => {
+  const results = [];
+  
+  for (const studentData of studentsData) {
+    try {
+      const studentId = generateStudentId(studentData.name, studentData.phone);
+      const existingDoc = await getDoc(doc(db, 'students', studentId));
+      
+      if (existingDoc.exists()) {
+        // Handle duplicate based on action
+        let action = duplicateAction;
+        if (typeof duplicateAction === 'object') {
+          action = duplicateAction[studentId] || 'skip';
+        }
+        
+        if (action === 'skip') {
+          results.push({
+            ...studentData,
+            studentId,
+            success: false,
+            skipped: true,
+            error: '이미 존재하는 학생 (건너뜀)'
+          });
+          continue;
+        } else if (action === 'overwrite') {
+          await updateDoc(doc(db, 'students', studentId), {
+            name: studentData.name,
+            phone: studentData.phone,
+            birthDate: studentData.birthDate || '',
+            class: studentData.class || '',
+            updatedAt: serverTimestamp(),
+          });
+          results.push({
+            ...studentData,
+            studentId,
+            success: true,
+            overwritten: true
+          });
+          continue;
+        }
+      }
+      
+      // Create new student
+      await setDoc(doc(db, 'students', studentId), {
+        name: studentData.name,
+        phone: studentData.phone,
+        birthDate: studentData.birthDate || '',
+        class: studentData.class || '',
+        enrollmentOpen: true,
+        changeStartDate: null,
+        changeEndDate: null,
+        createdAt: serverTimestamp(),
+        createdBy: adminUid,
+      });
+      
+      results.push({
+        ...studentData,
+        studentId,
+        success: true,
+        created: true
+      });
+    } catch (error) {
+      results.push({
+        ...studentData,
+        success: false,
+        error: error.message
+      });
+    }
+  }
+  
+  return results;
+};
+
+/**
+ * Check duplicates for batch upload preview
+ */
+export const checkBatchDuplicates = async (studentsData) => {
+  const results = [];
+  
+  for (const studentData of studentsData) {
+    const studentId = generateStudentId(studentData.name, studentData.phone);
+    const existingDoc = await getDoc(doc(db, 'students', studentId));
+    
+    results.push({
+      ...studentData,
+      studentId,
+      isDuplicate: existingDoc.exists(),
+      existingData: existingDoc.exists() ? existingDoc.data() : null
+    });
+  }
+  
+  return results;
+};
+
+/**
  * Create a new student
  */
 export const createStudent = async (studentData, adminUid) => {
@@ -29,7 +139,8 @@ export const createStudent = async (studentData, adminUid) => {
   await setDoc(doc(db, 'students', studentId), {
     name: studentData.name,
     phone: studentData.phone,
-    birthDate: studentData.birthDate,
+    birthDate: studentData.birthDate || '',
+    class: studentData.class || '', // 반 필드 추가
     enrollmentOpen: true, // Default to open
     changeStartDate: null,
     changeEndDate: null,

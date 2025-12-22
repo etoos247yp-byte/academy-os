@@ -204,3 +204,58 @@ export const updateEnrolledCount = async (courseId, increment) => {
   
   return newEnrolled;
 };
+
+/**
+ * Batch create courses from Excel upload
+ * @param {Array} coursesData - Array of course data
+ * @param {string} adminUid - Admin user ID
+ * @param {string} seasonId - Season ID to assign courses to
+ * @returns {Array} Results with success/failure status for each course
+ */
+export const batchCreateCourses = async (coursesData, adminUid, seasonId) => {
+  const results = [];
+  
+  for (const courseData of coursesData) {
+    try {
+      // Validate required fields
+      if (!courseData.title || !courseData.instructor || !courseData.day) {
+        throw new Error('필수 항목 누락 (강좌명, 강사, 요일)');
+      }
+      
+      const colorConfig = getCategoryColor(courseData.category || '수학');
+      
+      const docRef = await addDoc(collection(db, 'courses'), {
+        title: courseData.title,
+        instructor: courseData.instructor,
+        category: courseData.category || '수학',
+        level: courseData.level || '중급',
+        day: courseData.day,
+        startPeriod: parseInt(courseData.startPeriod) || 1,
+        endPeriod: parseInt(courseData.endPeriod) || 2,
+        room: courseData.room || '',
+        capacity: parseInt(courseData.capacity) || 20,
+        enrolled: 0,
+        description: courseData.description || '',
+        seasonId: seasonId,
+        isActive: true,
+        color: `${colorConfig.bg} ${colorConfig.text}`,
+        createdAt: serverTimestamp(),
+        createdBy: adminUid,
+      });
+      
+      results.push({
+        ...courseData,
+        success: true,
+        courseId: docRef.id
+      });
+    } catch (error) {
+      results.push({
+        ...courseData,
+        success: false,
+        error: error.message
+      });
+    }
+  }
+  
+  return results;
+};
