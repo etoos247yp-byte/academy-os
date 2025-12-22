@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper function to check if user is admin
+    function isAdmin() {
+      return request.auth != null && 
+             exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+    
+    function isSuperAdmin() {
+      return request.auth != null && 
+             get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == 'superadmin';
+    }
+
+    // Students collection
+    match /students/{studentId} {
+      // Admins can read/write
+      allow read, write: if isAdmin();
+      // Students can read their own document (for login check)
+      allow read: if true; // Public read for login verification
+    }
+
+    // Seasons collection
+    match /seasons/{seasonId} {
+      allow read: if true; // Public read
+      allow write: if isAdmin();
+    }
+
+    // Courses collection
+    match /courses/{courseId} {
+      allow read: if true; // Public read
+      allow write: if isAdmin();
+    }
+
+    // Enrollments collection
+    match /enrollments/{enrollmentId} {
+      // Anyone can read (for student viewing their enrollments)
+      allow read: if true;
+      // Anyone can create (student enrollment)
+      allow create: if true;
+      // Only admins can update/delete
+      allow update, delete: if isAdmin();
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      // Only authenticated admins can read admin list
+      allow read: if isAdmin();
+      // Only superadmins can create new admins
+      allow create: if isSuperAdmin();
+      // Only superadmins can delete (except themselves)
+      allow delete: if isSuperAdmin() && request.auth.uid != adminId;
+      // Admins can't update
+      allow update: if false;
+    }
+  }
+}

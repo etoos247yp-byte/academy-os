@@ -1,0 +1,909 @@
+import React, { useState, useMemo } from 'react';
+import { Search, Calendar, Clock, User, BookOpen, Plus, Check, X, Filter, Trash2, ArrowRight, Lock, Settings, LogOut, Briefcase } from 'lucide-react';
+
+// --- Constants & Utilities ---
+const CATEGORIES = ["전체", "수학", "영어", "과학", "코딩", "기타"];
+const DAYS = ['월', '화', '수', '목', '금', '토', '일'];
+
+// 학원 교시 정의
+const PERIODS = [
+  { id: 1, time: '08:20', label: '1교시' },
+  { id: 2, time: '09:10', label: '2교시' },
+  { id: 3, time: '10:20', label: '3교시' },
+  { id: 4, time: '11:10', label: '4교시' },
+  // 점심 시간 공백
+  { id: 5, time: '14:30', label: '5교시' },
+  { id: 6, time: '15:20', label: '6교시' },
+  { id: 7, time: '16:30', label: '7교시' },
+  { id: 8, time: '17:20', label: '8교시' },
+  // 저녁 시간 공백
+  { id: 9, time: '19:40', label: '9교시' },
+  { id: 10, time: '20:30', label: '10교시' },
+  { id: 11, time: '21:40', label: '11교시' },
+  { id: 12, time: '22:50', label: '12교시' },
+];
+
+// Initial Mock Data
+const INITIAL_COURSES = [
+  {
+    id: 1,
+    title: "고등 수학(상) 심화반",
+    instructor: "김수학",
+    category: "수학",
+    level: "고급",
+    day: "월/수",
+    startPeriod: 9, // 19:40
+    endPeriod: 10,  // 20:30 (2교시 연강)
+    room: "301호",
+    capacity: 20,
+    enrolled: 15,
+    color: "bg-blue-100 text-blue-800",
+    description: "내신 1등급을 목표로 하는 심화 문제 풀이 과정입니다."
+  },
+  {
+    id: 2,
+    title: "수능 영어 독해 마스터",
+    instructor: "이영어",
+    category: "영어",
+    level: "중급",
+    day: "화/목",
+    startPeriod: 9,
+    endPeriod: 11,
+    room: "202호",
+    capacity: 25,
+    enrolled: 8,
+    color: "bg-purple-100 text-purple-800",
+    description: "평가원 기출 분석을 통한 독해 원리 파악 및 실전 적용."
+  },
+  {
+    id: 3,
+    title: "통합 과학 핵심 정리",
+    instructor: "박과학",
+    category: "과학",
+    level: "초급",
+    day: "토",
+    startPeriod: 3, // 10:20
+    endPeriod: 5,   // 14:30까지
+    room: "Lab-1",
+    capacity: 15,
+    enrolled: 15,
+    color: "bg-green-100 text-green-800",
+    description: "물화생지 통합 과학의 핵심 개념을 8주 완성으로 정리합니다."
+  }
+];
+
+// Helper to get formatted schedule string
+const formatSchedule = (day, startP, endP) => {
+    const startInfo = PERIODS.find(p => p.id === startP);
+    const endInfo = PERIODS.find(p => p.id === endP);
+    if (!startInfo || !endInfo) return `${day} (시간 미정)`;
+    return `${day} ${startInfo.time} (${startP}교시) ~ ${endP}교시`;
+};
+
+// --- Components ---
+
+const LoginScreen = ({ onLogin, onAdminLogin }) => {
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (name.trim().length < 2) {
+      setError('이름을 정확히 입력해주세요.');
+      return;
+    }
+    if (phone.length !== 4) {
+      setError('휴대폰 번호 뒷자리 4자리를 입력해주세요.');
+      return;
+    }
+    onLogin({ name, phone, role: 'student' });
+  };
+
+  return (
+    <div className="min-h-screen bg-white flex flex-col items-center justify-center p-4">
+      <div className="w-full max-w-md space-y-8 animate-fade-in-up">
+        <div className="text-center">
+          <div className="mx-auto w-12 h-12 bg-[#00b6b2] rounded-xl flex items-center justify-center mb-4 shadow-lg shadow-[#00b6b2]/20">
+            <BookOpen className="text-white w-7 h-7" />
+          </div>
+          <h2 className="text-3xl font-bold tracking-tight text-slate-900">
+            ACADEMY<span className="text-[#00b6b2]">.OS</span>
+          </h2>
+          <p className="mt-2 text-slate-500">수강신청을 위해 학생 정보를 입력해주세요.</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-8 space-y-6 relative z-10">
+          <div className="space-y-4">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-slate-700 mb-1">
+                학생 이름
+              </label>
+              <input
+                id="name"
+                name="name"
+                type="text"
+                required
+                className="block w-full rounded-xl border-gray-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-[#00b6b2] focus:bg-white focus:ring-2 focus:ring-[#00b6b2]/20 transition-all outline-none"
+                placeholder="홍길동"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1">
+                보호자 연락처 뒷자리
+              </label>
+              <div className="relative">
+                <input
+                  id="phone"
+                  name="phone"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={4}
+                  required
+                  className="block w-full rounded-xl border-gray-200 bg-slate-50 px-4 py-3 text-slate-900 focus:border-[#00b6b2] focus:bg-white focus:ring-2 focus:ring-[#00b6b2]/20 transition-all outline-none tracking-widest"
+                  placeholder="●●●●"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value.replace(/[^0-9]/g, ''))}
+                />
+                <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+              </div>
+            </div>
+          </div>
+
+          {error && (
+            <div className="text-red-500 text-sm text-center font-medium bg-red-50 py-2 rounded-lg">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="group relative flex w-full justify-center rounded-xl bg-slate-900 py-3.5 px-4 text-sm font-bold text-white hover:bg-[#00b6b2] focus:outline-none focus:ring-2 focus:ring-[#00b6b2] focus:ring-offset-2 transition-all duration-200 shadow-lg hover:shadow-[#00b6b2]/30 hover:-translate-y-0.5"
+          >
+            수강신청 입장하기
+            <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+          </button>
+        </form>
+        
+        <div className="border-t border-slate-100 pt-6 mt-6 flex justify-center">
+            <button 
+                onClick={onAdminLogin}
+                className="text-xs text-slate-400 hover:text-[#00b6b2] flex items-center gap-1 transition-colors"
+            >
+                <Settings className="w-3 h-3" /> 관리자(선생님) 로그인
+            </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const Header = ({ user, onLogout, currentView, onNavigate }) => (
+  <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="flex justify-between items-center h-16">
+        <div className="flex items-center gap-2 cursor-pointer" onClick={() => user.role === 'student' && onNavigate('courses')}>
+          <div className="w-8 h-8 bg-[#00b6b2] rounded-lg flex items-center justify-center">
+            <BookOpen className="text-white w-5 h-5" />
+          </div>
+          <span className="text-xl font-bold tracking-tight text-slate-900">
+            ACADEMY<span className="text-[#00b6b2]">.OS</span>
+            {user.role === 'admin' && <span className="ml-2 text-xs bg-slate-800 text-white px-2 py-0.5 rounded uppercase tracking-wider">Admin</span>}
+          </span>
+        </div>
+        
+        {user.role === 'student' && (
+             <nav className="hidden md:flex space-x-1">
+                <button 
+                    onClick={() => onNavigate('courses')}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${currentView === 'courses' ? 'bg-slate-100 text-[#00b6b2]' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+                >
+                    전체 강좌
+                </button>
+                <button 
+                    onClick={() => onNavigate('schedule')}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${currentView === 'schedule' ? 'bg-slate-100 text-[#00b6b2]' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'}`}
+                >
+                    내 시간표
+                </button>
+             </nav>
+        )}
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
+             <div className="text-right hidden sm:block">
+                 <div className="text-sm font-semibold text-slate-700">{user.name}</div>
+                 <div className="text-xs text-slate-500">{user.role === 'admin' ? '관리자 모드' : '학생'}</div>
+             </div>
+             <button 
+                onClick={onLogout}
+                className="p-2 text-slate-400 hover:text-red-500 bg-slate-50 hover:bg-red-50 rounded-full transition-all"
+                title="로그아웃"
+             >
+                <LogOut className="w-4 h-4" />
+             </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+);
+
+// --- Admin Component ---
+const AdminPage = ({ courses, setCourses }) => {
+    const [newCourse, setNewCourse] = useState({
+        title: '', instructor: '', category: '수학', level: '중급',
+        day: [], startPeriod: 1, endPeriod: 2,
+        room: '', capacity: 20, description: ''
+    });
+
+    const toggleDay = (day) => {
+        setNewCourse(prev => {
+            const days = prev.day.includes(day) 
+                ? prev.day.filter(d => d !== day)
+                : [...prev.day, day].sort((a,b) => DAYS.indexOf(a) - DAYS.indexOf(b));
+            return { ...prev, day: days };
+        });
+    };
+
+    const handleAddCourse = (e) => {
+        e.preventDefault();
+        if(newCourse.day.length === 0) return alert("요일을 선택해주세요.");
+        if(parseInt(newCourse.startPeriod) > parseInt(newCourse.endPeriod)) return alert("종료 교시가 시작 교시보다 빠를 수 없습니다.");
+        
+        const course = {
+            id: Date.now(),
+            ...newCourse,
+            day: newCourse.day.join('/'),
+            startPeriod: parseInt(newCourse.startPeriod),
+            endPeriod: parseInt(newCourse.endPeriod),
+            enrolled: 0,
+            color: `bg-${getColorByCategory(newCourse.category)}-100 text-${getColorByCategory(newCourse.category)}-800`
+        };
+        
+        setCourses([...courses, course]);
+        setNewCourse({
+            title: '', instructor: '', category: '수학', level: '중급',
+            day: [], startPeriod: 1, endPeriod: 2,
+            room: '', capacity: 20, description: ''
+        });
+        alert("강좌가 성공적으로 개설되었습니다.");
+    };
+
+    const handleDelete = (id) => {
+        if(window.confirm("정말 이 강좌를 폐강하시겠습니까?")) {
+            setCourses(courses.filter(c => c.id !== id));
+        }
+    };
+
+    const getColorByCategory = (cat) => {
+        switch(cat) {
+            case '수학': return 'blue';
+            case '영어': return 'purple';
+            case '과학': return 'green';
+            case '코딩': return 'orange';
+            default: return 'gray';
+        }
+    };
+
+    return (
+        <div className="max-w-5xl mx-auto px-4 py-8">
+            <h1 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-2">
+                <Briefcase className="w-6 h-6 text-[#00b6b2]" />
+                강좌 개설 및 관리
+            </h1>
+            
+            {/* Create Course Form */}
+            <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-10 shadow-sm">
+                <h2 className="text-lg font-semibold mb-4">새 강좌 등록</h2>
+                <form onSubmit={handleAddCourse} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                        <input required placeholder="강좌명 (예: 고등 수학 심화)" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00b6b2] transition-colors" value={newCourse.title} onChange={e=>setNewCourse({...newCourse, title: e.target.value})} />
+                        <div className="grid grid-cols-2 gap-4">
+                            <input required placeholder="강사명" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00b6b2]" value={newCourse.instructor} onChange={e=>setNewCourse({...newCourse, instructor: e.target.value})} />
+                            <input required placeholder="강의실 (예: 301호)" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00b6b2]" value={newCourse.room} onChange={e=>setNewCourse({...newCourse, room: e.target.value})} />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none" value={newCourse.category} onChange={e=>setNewCourse({...newCourse, category: e.target.value})}>
+                                {CATEGORIES.filter(c=>c!=='전체').map(c=><option key={c}>{c}</option>)}
+                            </select>
+                             <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none" value={newCourse.level} onChange={e=>setNewCourse({...newCourse, level: e.target.value})}>
+                                <option>초급</option><option>중급</option><option>고급</option><option>실전</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="text-sm font-medium text-slate-600 mb-2 block">수업 요일</label>
+                            <div className="flex gap-2">
+                                {DAYS.map(day => (
+                                    <button type="button" key={day} onClick={() => toggleDay(day)}
+                                        className={`w-9 h-9 rounded-full text-sm font-medium transition-all ${newCourse.day.includes(day) ? 'bg-[#00b6b2] text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>
+                                        {day}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                             <div className="flex-1">
+                                <label className="text-xs text-slate-500 mb-1 block">시작 교시</label>
+                                <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none" value={newCourse.startPeriod} onChange={e=>setNewCourse({...newCourse, startPeriod: e.target.value})}>
+                                    {PERIODS.map(p => <option key={p.id} value={p.id}>{p.id}교시 ({p.time})</option>)}
+                                </select>
+                             </div>
+                             <span className="text-slate-400 pt-5">~</span>
+                             <div className="flex-1">
+                                <label className="text-xs text-slate-500 mb-1 block">종료 교시</label>
+                                <select className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none" value={newCourse.endPeriod} onChange={e=>setNewCourse({...newCourse, endPeriod: e.target.value})}>
+                                    {PERIODS.map(p => <option key={p.id} value={p.id}>{p.id}교시 ({p.time})</option>)}
+                                </select>
+                             </div>
+                        </div>
+                         <input type="number" placeholder="정원 (명)" className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00b6b2]" value={newCourse.capacity} onChange={e=>setNewCourse({...newCourse, capacity: parseInt(e.target.value)})} />
+                    </div>
+                     <textarea placeholder="강좌 설명..." className="md:col-span-2 w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-[#00b6b2] h-24 resize-none" value={newCourse.description} onChange={e=>setNewCourse({...newCourse, description: e.target.value})} />
+                     <button className="md:col-span-2 w-full bg-slate-900 hover:bg-[#00b6b2] text-white py-3 rounded-xl font-bold transition-all">강좌 개설하기</button>
+                </form>
+            </div>
+
+            {/* Course List */}
+            <h2 className="text-lg font-semibold mb-4">개설된 강좌 목록 ({courses.length})</h2>
+            <div className="bg-white rounded-2xl border border-gray-200 overflow-hidden">
+                <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-slate-500 text-sm font-medium">
+                        <tr>
+                            <th className="p-4">강좌명</th>
+                            <th className="p-4">강사</th>
+                            <th className="p-4">교시</th>
+                            <th className="p-4">현황</th>
+                            <th className="p-4 text-right">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                        {courses.map(course => (
+                            <tr key={course.id} className="hover:bg-slate-50/50">
+                                <td className="p-4 font-medium text-slate-900">{course.title}</td>
+                                <td className="p-4 text-slate-600">{course.instructor}</td>
+                                <td className="p-4 text-slate-500 text-sm">{formatSchedule(course.day, course.startPeriod, course.endPeriod)}</td>
+                                <td className="p-4 text-slate-500 text-sm">{course.enrolled}/{course.capacity}명</td>
+                                <td className="p-4 text-right">
+                                    <button onClick={() => handleDelete(course.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors">
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+                 {courses.length === 0 && <div className="p-8 text-center text-slate-400">개설된 강좌가 없습니다.</div>}
+            </div>
+        </div>
+    );
+};
+
+// --- Weekly Schedule Components ---
+
+// 1. Sidebar Mini Schedule (Small)
+const WeeklySchedule = ({ enrolledCourses }) => {
+    const getCourseBlock = (dayIndex, periodId) => {
+        return enrolledCourses.find(course => {
+            const days = course.day.split('/');
+            const isDayMatch = days.includes(DAYS[dayIndex]);
+            const isPeriodMatch = periodId >= course.startPeriod && periodId <= course.endPeriod;
+            return isDayMatch && isPeriodMatch;
+        });
+    };
+
+    return (
+        <div className="bg-white rounded-2xl border border-gray-200 p-4 mt-6">
+            <h3 className="text-sm font-bold text-slate-900 mb-4 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-[#00b6b2]" />
+                주간 시간표 미리보기
+            </h3>
+            
+            <div className="grid grid-cols-8 gap-1 text-[10px] text-center">
+                <div className="text-slate-400">교시</div>
+                {DAYS.map(day => <div key={day} className="font-semibold text-slate-600">{day}</div>)}
+
+                {PERIODS.map((period) => (
+                    <React.Fragment key={period.id}>
+                        {/* Period Label (e.g. 1) */}
+                        <div className="text-slate-400 h-8 flex flex-col items-center justify-center bg-slate-50 rounded-sm">
+                            <span className="font-bold">{period.id}</span>
+                            <span className="text-[8px] scale-90">{period.time}</span>
+                        </div>
+                        
+                        {/* Days Grid */}
+                        {DAYS.map((day, dayIndex) => {
+                            const course = getCourseBlock(dayIndex, period.id);
+                            const isStartBlock = course && course.startPeriod === period.id;
+                            
+                            // 12교시는 토/일 제외
+                            if (period.id === 12 && (day === '토' || day === '일')) {
+                                return <div key={`${day}-${period.id}`} className="bg-gray-100/50 rounded-sm" />;
+                            }
+
+                            return (
+                                <div key={`${day}-${period.id}`} className="h-8 relative border border-slate-50">
+                                    {course && (
+                                        <div className={`absolute inset-0.5 ${course.color.replace('text-', 'bg-').replace('100', '200')} rounded-sm opacity-90 flex items-center justify-center`}>
+                                            {isStartBlock && (
+                                                <span className="text-[9px] font-bold text-slate-900 truncate px-0.5 leading-tight">
+                                                    {course.title.split(' ')[0]}
+                                                </span>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                        
+                        {/* Add Spacing after Period 4 (Lunch) and Period 8 (Dinner) */}
+                        {(period.id === 4 || period.id === 8) && (
+                             <div className="col-span-8 h-2 bg-slate-50/50 -mx-1 my-1 border-t border-b border-slate-100" />
+                        )}
+                    </React.Fragment>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// 2. Full Page Schedule (Large)
+const BigSchedule = ({ enrolledCourses }) => {
+    const getCourseBlock = (dayIndex, periodId) => {
+        return enrolledCourses.find(course => {
+            const days = course.day.split('/');
+            const isDayMatch = days.includes(DAYS[dayIndex]);
+            const isPeriodMatch = periodId >= course.startPeriod && periodId <= course.endPeriod;
+            return isDayMatch && isPeriodMatch;
+        });
+    };
+
+    return (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+             <div className="grid grid-cols-8 divide-x divide-gray-200 border-b border-gray-200">
+                <div className="py-3 text-center text-sm font-semibold text-slate-500 bg-slate-50">교시</div>
+                {DAYS.map(day => (
+                    <div key={day} className={`py-3 text-center text-sm font-bold bg-slate-50 ${day === '일' ? 'text-red-500' : day === '토' ? 'text-blue-500' : 'text-slate-900'}`}>
+                        {day}
+                    </div>
+                ))}
+            </div>
+            
+            <div className="grid grid-cols-8 divide-x divide-gray-200 bg-white">
+                {PERIODS.map((period) => (
+                    <React.Fragment key={period.id}>
+                        {/* Time Column */}
+                        <div className="min-h-[80px] text-xs font-medium text-slate-500 flex flex-col items-center justify-center bg-slate-50/30 border-b border-slate-100 p-2">
+                            <span className="font-bold text-lg text-slate-300 mb-1">{period.id}</span>
+                            <span className="text-slate-600 bg-slate-100 px-2 py-0.5 rounded-full">{period.time}</span>
+                        </div>
+                        
+                        {/* Days Columns */}
+                        {DAYS.map((day, dayIndex) => {
+                             // 12교시는 토/일 제외
+                            if (period.id === 12 && (day === '토' || day === '일')) {
+                                return <div key={`${day}-${period.id}`} className="bg-gray-50 border-b border-slate-100" />;
+                            }
+
+                            const course = getCourseBlock(dayIndex, period.id);
+                            const isStartBlock = course && course.startPeriod === period.id;
+                            const isEndBlock = course && course.endPeriod === period.id;
+                            
+                            return (
+                                <div key={`${day}-${period.id}`} className="min-h-[80px] relative border-b border-slate-100 hover:bg-slate-50 transition-colors p-1">
+                                    {course && (
+                                        <div className={`
+                                            absolute inset-1 rounded-lg p-2 flex flex-col gap-1 shadow-sm transition-all hover:shadow-md hover:scale-[1.02] z-10 cursor-pointer
+                                            ${course.color.replace('text-', 'bg-').replace('100', '200')} 
+                                            border border-transparent
+                                            ${isStartBlock ? 'rounded-t-lg' : 'rounded-t-none border-t-0 mt-[-1px]'}
+                                            ${isEndBlock ? 'rounded-b-lg' : 'rounded-b-none border-b-0 mb-[-1px] h-[calc(100%+2px)]'}
+                                        `}>
+                                            {isStartBlock && (
+                                                <>
+                                                    <span className={`text-xs font-bold ${course.color.split(' ')[1]}`}>{course.title}</span>
+                                                    <div className="flex items-center gap-1 mt-auto">
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded bg-white/50 backdrop-blur-sm ${course.color.split(' ')[1]}`}>
+                                                            {course.room}
+                                                        </span>
+                                                        <span className={`text-[10px] opacity-80 ${course.color.split(' ')[1]}`}>
+                                                            {course.instructor}
+                                                        </span>
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+
+                         {/* Add Spacing after Period 4 (Lunch) and Period 8 (Dinner) - for visual separation */}
+                        {(period.id === 4 || period.id === 8) && (
+                             <div className="col-span-8 h-3 bg-slate-50 border-t border-b border-slate-200 flex items-center justify-center">
+                                 <div className="w-16 h-1 bg-slate-200 rounded-full"></div>
+                             </div>
+                        )}
+                    </React.Fragment>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// --- Main Pages ---
+
+// My Schedule Page
+const MySchedulePage = ({ cart, user }) => {
+    return (
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
+             <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold text-slate-900">
+                        {user.name}님의 <span className="text-[#00b6b2]">시간표</span>
+                    </h1>
+                    <p className="text-slate-500 mt-2">
+                        2024년 1학기 수강신청 완료된 시간표입니다.
+                    </p>
+                </div>
+                <div className="flex gap-3">
+                    <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 text-slate-600 rounded-xl hover:bg-slate-50 hover:text-slate-900 transition-colors shadow-sm">
+                         인쇄
+                    </button>
+                    <button className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl hover:bg-[#00b6b2] transition-colors shadow-lg shadow-[#00b6b2]/20">
+                         이미지 저장
+                    </button>
+                </div>
+             </div>
+
+             <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
+                {/* Main Schedule Visualizer */}
+                <div className="lg:col-span-3">
+                    <BigSchedule enrolledCourses={cart} />
+                </div>
+
+                {/* Course List Summary */}
+                <div className="lg:col-span-1 space-y-6">
+                    <div className="bg-white rounded-2xl border border-gray-200 p-6 shadow-sm">
+                        <h3 className="font-bold text-slate-900 mb-4">수강 목록 ({cart.length})</h3>
+                        <div className="space-y-4">
+                            {cart.map(course => (
+                                <div key={course.id} className="flex gap-3 items-start p-3 rounded-xl bg-slate-50 border border-slate-100">
+                                    <div className={`w-1 h-full min-h-[40px] rounded-full ${course.color.replace('text-', 'bg-').replace('100', '500')}`} />
+                                    <div>
+                                        <div className="font-semibold text-sm text-slate-900">{course.title}</div>
+                                        <div className="text-xs text-slate-500 mt-1">{formatSchedule(course.day, course.startPeriod, course.endPeriod)}</div>
+                                        <div className="text-xs text-slate-400 mt-0.5">{course.room} | {course.instructor}</div>
+                                    </div>
+                                </div>
+                            ))}
+                            {cart.length === 0 && <p className="text-sm text-slate-400">등록된 강좌가 없습니다.</p>}
+                        </div>
+                    </div>
+                    
+                    <div className="bg-[#00b6b2]/5 rounded-2xl p-6 border border-[#00b6b2]/20">
+                        <h3 className="font-bold text-[#008f8c] mb-2">학습 조언</h3>
+                        <p className="text-sm text-[#007d7a] leading-relaxed">
+                            수학 수업이 많은 날입니다. 예습을 철저히 하고 오시는 것을 권장합니다.<br/>
+                            토요일 과학 수업은 실험이 포함되어 있으니 편한 복장으로 오세요.
+                        </p>
+                    </div>
+                </div>
+             </div>
+        </div>
+    );
+};
+
+// Course Enrollment Page
+const EnrollmentPage = ({ 
+    user, courses, cart, addToCart, removeFromCart, 
+    selectedCategory, setSelectedCategory, searchQuery, setSearchQuery, filteredCourses 
+}) => {
+    return (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
+            <div className="mb-10 text-center max-w-2xl mx-auto">
+              <h1 className="text-4xl font-extrabold tracking-tight text-slate-900 mb-4">
+                원하는 강좌를 <span className="text-[#00b6b2]">탐색</span>하세요
+              </h1>
+              <p className="text-lg text-slate-500">
+                성적 향상을 위한 최고의 강사진과 커리큘럼이 준비되어 있습니다.<br/>
+                원하는 과목, 시간대를 선택하여 나만의 시간표를 완성하세요.
+              </p>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-10 sticky top-20 z-40 bg-white/80 backdrop-blur-sm p-4 rounded-2xl border border-gray-100 shadow-sm">
+              <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 hide-scrollbar">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-all ${
+                      selectedCategory === cat
+                        ? 'bg-slate-900 text-white shadow-md'
+                        : 'bg-slate-50 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              <div className="relative w-full md:w-72">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+                <input
+                  type="text"
+                  placeholder="강좌명, 강사명 검색..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00b6b2] focus:border-transparent text-sm transition-all shadow-sm"
+                />
+              </div>
+            </div>
+
+            {/* Main Grid Layout */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 items-start">
+              {/* Course List (3 Columns) */}
+              <div className="lg:col-span-3">
+                 <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-xl font-bold text-slate-900">개설 강좌 <span className="text-slate-400 font-normal ml-2">{filteredCourses.length}건</span></h2>
+                    <button className="flex items-center gap-2 text-sm text-slate-500 hover:text-[#00b6b2]">
+                        <Filter className="w-4 h-4" /> 정렬
+                    </button>
+                 </div>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {filteredCourses.map(course => (
+                    <CourseCard 
+                      key={course.id} 
+                      course={course} 
+                      onAdd={addToCart} 
+                      isAdded={cart.some(c => c.id === course.id)}
+                    />
+                  ))}
+                  
+                  {filteredCourses.length === 0 && (
+                     <div className="col-span-full py-20 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <p className="text-slate-400">검색 조건에 맞는 강좌가 없습니다.</p>
+                        <button 
+                            onClick={() => {setSelectedCategory("전체"); setSearchQuery("");}}
+                            className="mt-4 text-[#00b6b2] font-medium hover:underline"
+                        >
+                            필터 초기화
+                        </button>
+                     </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Sidebar Cart & Schedule (1 Column) */}
+              <div className="lg:col-span-1">
+                <CartSidebar cart={cart} onRemove={removeFromCart} />
+              </div>
+            </div>
+        </main>
+    );
+};
+
+// --- Student Component parts ---
+const CourseCard = ({ course, onAdd, isAdded }) => {
+  const isFull = course.enrolled >= course.capacity;
+
+  return (
+    <div className="group relative bg-white rounded-2xl border border-gray-200 p-6 hover:shadow-xl hover:border-[#00b6b2]/30 transition-all duration-300 flex flex-col h-full">
+      <div className="flex justify-between items-start mb-4">
+        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${course.color}`}>
+          {course.category}
+        </span>
+        <span className="text-xs font-medium text-slate-400 border border-slate-100 px-2 py-1 rounded-md">
+          {course.level}
+        </span>
+      </div>
+      
+      <h3 className="text-lg font-bold text-slate-900 mb-2 group-hover:text-[#00b6b2] transition-colors">
+        {course.title}
+      </h3>
+      
+      <p className="text-sm text-slate-500 mb-4 line-clamp-2 flex-grow">
+        {course.description}
+      </p>
+
+      <div className="space-y-3 text-sm text-slate-600 mb-6">
+        <div className="flex items-center gap-2">
+          <User className="w-4 h-4 text-slate-400" />
+          <span>{course.instructor}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Clock className="w-4 h-4 text-slate-400" />
+          <span>{formatSchedule(course.day, course.startPeriod, course.endPeriod)}</span>
+        </div>
+        <div className="flex items-center gap-2">
+            <div className="w-4 h-4 text-slate-400 flex items-center justify-center">
+                <Briefcase className="w-3 h-3" />
+            </div>
+            <span>{course.room}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 flex items-center justify-center">
+            <div className={`w-2 h-2 rounded-full ${isFull ? 'bg-red-500' : 'bg-green-500'}`} />
+          </div>
+          <span className={isFull ? 'text-red-500 font-medium' : 'text-slate-600'}>
+            {course.enrolled} / {course.capacity} 명
+            {isFull && <span className="ml-1 text-xs">(마감)</span>}
+          </span>
+        </div>
+      </div>
+
+      <button
+        onClick={() => !isFull && !isAdded && onAdd(course)}
+        disabled={isFull || isAdded}
+        className={`w-full py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 font-medium transition-all duration-200
+          ${isAdded 
+            ? 'bg-slate-100 text-slate-500 cursor-default' 
+            : isFull
+              ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+              : 'bg-slate-900 text-white hover:bg-[#00b6b2] shadow-md hover:shadow-[#00b6b2]/30'
+          }`}
+      >
+        {isAdded ? (
+          <>
+            <Check className="w-4 h-4" /> 담기 완료
+          </>
+        ) : isFull ? (
+          <>
+            <X className="w-4 h-4" /> 신청 마감
+          </>
+        ) : (
+          <>
+            <Plus className="w-4 h-4" /> 수강 신청
+          </>
+        )}
+      </button>
+    </div>
+  );
+};
+
+const CartSidebar = ({ cart, onRemove }) => {
+  const totalCredits = cart.length; 
+
+  return (
+    <div className="h-fit sticky top-24 space-y-6">
+        {/* Cart List */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+            <h2 className="text-lg font-bold text-slate-900 mb-4 flex items-center justify-between">
+                신청 내역
+                <span className="bg-[#00b6b2]/10 text-[#00b6b2] text-xs px-2 py-1 rounded-full">{cart.length}개</span>
+            </h2>
+
+            {cart.length === 0 ? (
+                <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                <p className="text-sm text-slate-500">신청한 강좌가 없습니다.</p>
+                </div>
+            ) : (
+                <div className="space-y-3 mb-6">
+                {cart.map((course) => (
+                    <div key={course.id} className="group flex items-start justify-between p-3 bg-slate-50 rounded-xl hover:bg-white hover:shadow-md transition-all border border-transparent hover:border-gray-100">
+                    <div>
+                        <p className="text-sm font-semibold text-slate-900">{course.title}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{formatSchedule(course.day, course.startPeriod, course.endPeriod)}</p>
+                    </div>
+                    <button 
+                        onClick={() => onRemove(course.id)}
+                        className="text-slate-400 hover:text-red-500 transition-colors p-1"
+                    >
+                        <Trash2 className="w-4 h-4" />
+                    </button>
+                    </div>
+                ))}
+                </div>
+            )}
+
+            <div className="border-t border-gray-100 pt-4 space-y-2">
+                <div className="flex justify-between text-sm">
+                <span className="text-slate-500">총 강좌 수</span>
+                <span className="font-medium text-slate-900">{totalCredits} 과목</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                <span className="text-slate-500">예상 수강료</span>
+                <span className="font-medium text-slate-900">{(totalCredits * 350000).toLocaleString()}원</span>
+                </div>
+            </div>
+
+            <button className="w-full mt-6 bg-[#00b6b2] hover:bg-[#009da0] text-white py-3 rounded-xl font-semibold shadow-lg shadow-[#00b6b2]/30 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed" disabled={cart.length === 0}>
+                신청 확정하기
+            </button>
+        </div>
+
+        {/* Real-time Schedule */}
+        <WeeklySchedule enrolledCourses={cart} />
+    </div>
+  );
+};
+
+export default function App() {
+  const [user, setUser] = useState(null); 
+  const [courses, setCourses] = useState(INITIAL_COURSES); // Global Course State
+  
+  // App View State ('courses' or 'schedule')
+  const [currentView, setCurrentView] = useState('courses');
+
+  // Enrollment State
+  const [selectedCategory, setSelectedCategory] = useState("전체");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [cart, setCart] = useState([]);
+
+  const filteredCourses = useMemo(() => {
+    return courses.filter(course => {
+      const matchesCategory = selectedCategory === "전체" || course.category === selectedCategory;
+      const matchesSearch = course.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          course.instructor.toLowerCase().includes(searchQuery.toLowerCase());
+      return matchesCategory && matchesSearch;
+    });
+  }, [selectedCategory, searchQuery, courses]);
+
+  const addToCart = (course) => {
+    // Check for time conflict (Simple Check)
+    const hasConflict = cart.some(existing => {
+        // Simple day/time overlap logic could go here
+        // For prototype, we allow overlaps but ideally should block
+        return false; 
+    });
+    setCart([...cart, course]);
+  };
+
+  const removeFromCart = (courseId) => {
+    setCart(cart.filter(c => c.id !== courseId));
+  };
+
+  const handleLogin = (userInfo) => {
+      setUser(userInfo);
+  };
+  
+  const handleAdminLogin = () => {
+      setUser({ name: "관리자", role: "admin" });
+  };
+
+  const handleLogout = () => {
+      setUser(null);
+      setCart([]);
+      setCurrentView('courses');
+  };
+
+  if (!user) {
+      return <LoginScreen onLogin={handleLogin} onAdminLogin={handleAdminLogin} />;
+  }
+
+  return (
+    <div className="min-h-screen bg-white font-sans text-slate-900 animate-fade-in">
+      <Header 
+        user={user} 
+        onLogout={handleLogout} 
+        currentView={currentView}
+        onNavigate={setCurrentView}
+      />
+
+      {user.role === 'admin' ? (
+          <AdminPage courses={courses} setCourses={setCourses} />
+      ) : currentView === 'schedule' ? (
+          <MySchedulePage cart={cart} user={user} />
+      ) : (
+          <EnrollmentPage 
+            user={user}
+            courses={courses}
+            cart={cart}
+            addToCart={addToCart}
+            removeFromCart={removeFromCart}
+            selectedCategory={selectedCategory}
+            setSelectedCategory={setSelectedCategory}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+            filteredCourses={filteredCourses}
+          />
+      )}
+    </div>
+  );
+}
