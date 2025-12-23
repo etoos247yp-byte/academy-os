@@ -1,4 +1,4 @@
-import { BookOpen, LogOut, Settings } from 'lucide-react';
+import { LogOut, Settings } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import NotificationBell from '../student/NotificationBell';
 
@@ -21,11 +21,9 @@ export function StudentHeader({ student, onLogout }) {
             className="flex items-center gap-2 cursor-pointer" 
             onClick={() => navigate('/student/courses')}
           >
-            <div className="w-8 h-8 bg-[#00b6b2] rounded-lg flex items-center justify-center">
-              <BookOpen className="text-white w-5 h-5" />
-            </div>
+            <img src="/logo.png" alt="ETOOS247.IC" className="w-8 h-8 object-contain" />
             <span className="text-xl font-bold tracking-tight text-slate-900">
-              ACADEMY<span className="text-[#00b6b2]">.OS</span>
+              ETOOS247<span className="text-[#00b6b2]">.IC</span>
             </span>
           </div>
           
@@ -123,11 +121,9 @@ export function AdminHeader({ admin, onLogout }) {
             className="flex items-center gap-2 cursor-pointer" 
             onClick={() => navigate('/admin/dashboard')}
           >
-            <div className="w-8 h-8 bg-[#00b6b2] rounded-lg flex items-center justify-center">
-              <BookOpen className="text-white w-5 h-5" />
-            </div>
+            <img src="/logo.png" alt="ETOOS247.IC" className="w-8 h-8 object-contain" />
             <span className="text-xl font-bold tracking-tight text-slate-900">
-              ACADEMY<span className="text-[#00b6b2]">.OS</span>
+              ETOOS247<span className="text-[#00b6b2]">.IC</span>
               <span className="ml-2 text-xs bg-slate-800 text-white px-2 py-0.5 rounded uppercase tracking-wider">Admin</span>
             </span>
           </div>

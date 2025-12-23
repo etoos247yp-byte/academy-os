@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, BookOpen, Clock, CheckCircle, Calendar, ArrowRight, BarChart3, TrendingDown, User, X } from 'lucide-react';
+import { Users, BookOpen, Clock, CheckCircle, Calendar, ArrowRight, BarChart3, TrendingDown, User, X, Filter } from 'lucide-react';
 import { getAllStudents } from '../../lib/studentService';
 import { getAllCourses } from '../../lib/courseService';
 import { subscribeToPendingEnrollments, getAllEnrollments } from '../../lib/enrollmentService';
@@ -327,6 +327,11 @@ export default function AdminDashboard() {
     seasons: [],
   });
   const [selectedInstructor, setSelectedInstructor] = useState(null);
+  
+  // 기간 필터 상태
+  const [filterMode, setFilterMode] = useState('all'); // 'all', 'season', 'custom'
+  const [selectedSeasonId, setSelectedSeasonId] = useState('');
+  const [customRange, setCustomRange] = useState({ start: '', end: '' });
 
   useEffect(() => {
     const loadStats = async () => {
@@ -373,45 +378,96 @@ export default function AdminDashboard() {
     return () => unsubscribe();
   }, []);
 
-  // Memoized chart data
+  // 기간 필터링 함수
+  const filterByDateRange = useMemo(() => {
+    return (enrollments, courses) => {
+      let filteredEnrollments = enrollments;
+      let filteredCourses = courses;
+      
+      if (filterMode === 'season' && selectedSeasonId) {
+        // 해당 학기의 데이터만 필터
+        filteredEnrollments = enrollments.filter(e => e.seasonId === selectedSeasonId);
+        filteredCourses = courses.filter(c => c.seasonId === selectedSeasonId);
+      } else if (filterMode === 'custom' && customRange.start && customRange.end) {
+        // 사용자 지정 기간
+        const startDate = new Date(customRange.start);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = new Date(customRange.end);
+        endDate.setHours(23, 59, 59, 999);
+        
+        filteredEnrollments = enrollments.filter(e => {
+          const enrolledAt = e.enrolledAt?.toDate?.() || 
+            (e.enrolledAt?.seconds ? new Date(e.enrolledAt.seconds * 1000) : null);
+          if (!enrolledAt) return false;
+          return enrolledAt >= startDate && enrolledAt <= endDate;
+        });
+        
+        // 강좌는 해당 기간에 수강신청이 있는 것만 필터
+        const courseIdsWithEnrollments = new Set(filteredEnrollments.map(e => e.courseId));
+        filteredCourses = courses.filter(c => courseIdsWithEnrollments.has(c.id));
+      }
+      
+      return { filteredEnrollments, filteredCourses };
+    };
+  }, [filterMode, selectedSeasonId, customRange]);
+
+  // 필터된 데이터
+  const filteredData = useMemo(() => {
+    return filterByDateRange(rawData.enrollments, rawData.courses);
+  }, [filterByDateRange, rawData.enrollments, rawData.courses]);
+
+  // 현재 필터 설명 텍스트
+  const filterDescription = useMemo(() => {
+    if (filterMode === 'all') return '전체 기간';
+    if (filterMode === 'season' && selectedSeasonId) {
+      const season = rawData.seasons.find(s => s.id === selectedSeasonId);
+      return season ? `${season.name}` : '학기 선택';
+    }
+    if (filterMode === 'custom' && customRange.start && customRange.end) {
+      return `${customRange.start} ~ ${customRange.end}`;
+    }
+    return '기간 선택';
+  }, [filterMode, selectedSeasonId, customRange, rawData.seasons]);
+
+  // Memoized chart data (필터된 데이터 사용)
   const courseEnrollmentData = useMemo(
-    () => aggregateCourseEnrollments(rawData.courses, rawData.enrollments),
-    [rawData.courses, rawData.enrollments]
+    () => aggregateCourseEnrollments(filteredData.filteredCourses, filteredData.filteredEnrollments),
+    [filteredData.filteredCourses, filteredData.filteredEnrollments]
   );
 
   const categoryDistributionData = useMemo(
-    () => aggregateCategoryDistribution(rawData.courses, rawData.enrollments),
-    [rawData.courses, rawData.enrollments]
+    () => aggregateCategoryDistribution(filteredData.filteredCourses, filteredData.filteredEnrollments),
+    [filteredData.filteredCourses, filteredData.filteredEnrollments]
   );
 
   const statusDistributionData = useMemo(
-    () => aggregateStatusDistribution(rawData.enrollments),
-    [rawData.enrollments]
+    () => aggregateStatusDistribution(filteredData.filteredEnrollments),
+    [filteredData.filteredEnrollments]
   );
 
   const dailyTrendData = useMemo(
-    () => aggregateDailyTrend(rawData.enrollments),
-    [rawData.enrollments]
+    () => aggregateDailyTrend(filteredData.filteredEnrollments),
+    [filteredData.filteredEnrollments]
   );
 
   const instructorData = useMemo(
-    () => aggregateInstructorData(rawData.courses),
-    [rawData.courses]
+    () => aggregateInstructorData(filteredData.filteredCourses),
+    [filteredData.filteredCourses]
   );
 
   const cancellationStats = useMemo(
-    () => calculateCancellationStats(rawData.enrollments, rawData.seasons),
-    [rawData.enrollments, rawData.seasons]
+    () => calculateCancellationStats(filteredData.filteredEnrollments, rawData.seasons),
+    [filteredData.filteredEnrollments, rawData.seasons]
   );
 
   const enrollmentStats = useMemo(
-    () => calculateEnrollmentStats(rawData.courses),
-    [rawData.courses]
+    () => calculateEnrollmentStats(filteredData.filteredCourses),
+    [filteredData.filteredCourses]
   );
 
   const coursesPerStudent = useMemo(
-    () => calculateCoursesPerStudent(rawData.students, rawData.enrollments),
-    [rawData.students, rawData.enrollments]
+    () => calculateCoursesPerStudent(rawData.students, filteredData.filteredEnrollments),
+    [rawData.students, filteredData.filteredEnrollments]
   );
 
   if (loading) {
@@ -458,7 +514,75 @@ export default function AdminDashboard() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <h1 className="text-2xl font-bold text-slate-900 mb-8">대시보드</h1>
+      {/* 헤더 + 필터 */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+        <h1 className="text-2xl font-bold text-slate-900">대시보드</h1>
+        
+        {/* 기간 필터 */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 text-sm text-slate-500">
+            <Filter className="w-4 h-4" />
+            <span>조회 기간:</span>
+          </div>
+          
+          {/* 필터 모드 선택 */}
+          <select
+            value={filterMode}
+            onChange={(e) => {
+              setFilterMode(e.target.value);
+              if (e.target.value === 'all') {
+                setSelectedSeasonId('');
+                setCustomRange({ start: '', end: '' });
+              }
+            }}
+            className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
+          >
+            <option value="all">전체</option>
+            <option value="season">학기별</option>
+            <option value="custom">사용자 지정</option>
+          </select>
+          
+          {/* 학기 선택 (학기별 모드일 때) */}
+          {filterMode === 'season' && (
+            <select
+              value={selectedSeasonId}
+              onChange={(e) => setSelectedSeasonId(e.target.value)}
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
+            >
+              <option value="">학기 선택</option>
+              {rawData.seasons.filter(s => !s.isArchived).map(season => (
+                <option key={season.id} value={season.id}>{season.name}</option>
+              ))}
+            </select>
+          )}
+          
+          {/* 날짜 범위 (사용자 지정 모드일 때) */}
+          {filterMode === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                value={customRange.start}
+                onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
+              />
+              <span className="text-slate-400">~</span>
+              <input
+                type="date"
+                value={customRange.end}
+                onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
+              />
+            </div>
+          )}
+          
+          {/* 현재 필터 표시 */}
+          {filterMode !== 'all' && (
+            <span className="px-2 py-1 bg-[#00b6b2]/10 text-[#00b6b2] text-xs font-medium rounded-full">
+              {filterDescription}
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { UserPlus, Shield, Trash2, X } from 'lucide-react';
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore';
+import { UserPlus, Shield, Trash2, X, Database, AlertTriangle, Calendar } from 'lucide-react';
+import { collection, getDocs, deleteDoc, doc, writeBatch, query, where } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import { useAuth } from '../../contexts/AuthContext';
+import { getAllSeasons } from '../../lib/seasonService';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 export default function AdminSettings() {
@@ -10,6 +11,9 @@ export default function AdminSettings() {
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [seasons, setSeasons] = useState([]);
+  const [collectionCounts, setCollectionCounts] = useState({});
+  const [deleteModal, setDeleteModal] = useState(null);
 
   const loadAdmins = async () => {
     try {
@@ -26,8 +30,35 @@ export default function AdminSettings() {
     }
   };
 
+  const loadSeasons = async () => {
+    try {
+      const data = await getAllSeasons();
+      setSeasons(data.filter(s => !s.isArchived));
+    } catch (error) {
+      console.error('Failed to load seasons:', error);
+    }
+  };
+
+  const loadCollectionCounts = async () => {
+    const collections = ['enrollments', 'courses', 'students', 'notifications', 'attendance', 'classes'];
+    const counts = {};
+    
+    for (const col of collections) {
+      try {
+        const snapshot = await getDocs(collection(db, col));
+        counts[col] = snapshot.size;
+      } catch (error) {
+        counts[col] = 0;
+      }
+    }
+    
+    setCollectionCounts(counts);
+  };
+
   useEffect(() => {
     loadAdmins();
+    loadSeasons();
+    loadCollectionCounts();
   }, []);
 
   const handleDelete = async (uid, name) => {
@@ -128,6 +159,113 @@ export default function AdminSettings() {
         </p>
       </div>
 
+      {/* 데이터 관리 섹션 */}
+      <div className="mt-10">
+        <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2 mb-6">
+          <Database className="w-6 h-6 text-red-500" />
+          데이터 관리
+        </h2>
+
+        {/* 학기별 데이터 삭제 */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+          <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-amber-500" />
+            학기별 데이터 삭제
+          </h3>
+          <p className="text-sm text-slate-500 mb-4">
+            선택한 학기의 강좌 및 수강신청 데이터만 삭제합니다. 학기 정보는 유지됩니다.
+          </p>
+          <SeasonDataDelete 
+            seasons={seasons} 
+            onDelete={() => loadCollectionCounts()}
+          />
+        </div>
+
+        {/* 개별 컬렉션 삭제 */}
+        <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+          <h3 className="font-bold text-slate-900 mb-4">개별 데이터 초기화</h3>
+          <div className="space-y-3">
+            <CollectionDeleteRow 
+              label="수강신청" 
+              collection="enrollments" 
+              count={collectionCounts.enrollments || 0}
+              icon="📋"
+              onDelete={() => setDeleteModal({ collection: 'enrollments', label: '수강신청' })}
+            />
+            <CollectionDeleteRow 
+              label="강좌" 
+              collection="courses" 
+              count={collectionCounts.courses || 0}
+              icon="📚"
+              onDelete={() => setDeleteModal({ collection: 'courses', label: '강좌' })}
+            />
+            <CollectionDeleteRow 
+              label="학생" 
+              collection="students" 
+              count={collectionCounts.students || 0}
+              icon="👥"
+              onDelete={() => setDeleteModal({ collection: 'students', label: '학생' })}
+            />
+            <CollectionDeleteRow 
+              label="알림" 
+              collection="notifications" 
+              count={collectionCounts.notifications || 0}
+              icon="🔔"
+              onDelete={() => setDeleteModal({ collection: 'notifications', label: '알림' })}
+            />
+            <CollectionDeleteRow 
+              label="출석" 
+              collection="attendance" 
+              count={collectionCounts.attendance || 0}
+              icon="✅"
+              onDelete={() => setDeleteModal({ collection: 'attendance', label: '출석' })}
+            />
+            <CollectionDeleteRow 
+              label="반" 
+              collection="classes" 
+              count={collectionCounts.classes || 0}
+              icon="🏫"
+              onDelete={() => setDeleteModal({ collection: 'classes', label: '반' })}
+            />
+          </div>
+        </div>
+
+        {/* 전체 초기화 */}
+        <div className="bg-red-50 rounded-2xl border border-red-200 p-6">
+          <h3 className="font-bold text-red-700 mb-2 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5" />
+            전체 데이터 초기화
+          </h3>
+          <p className="text-sm text-red-600 mb-4">
+            모든 데이터(학생, 강좌, 수강신청, 알림, 출석, 반)를 삭제합니다. 
+            학기 정보와 관리자 정보는 유지됩니다.
+          </p>
+          <button
+            onClick={() => setDeleteModal({ collection: 'all', label: '전체 데이터' })}
+            className="w-full py-3 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 transition-colors"
+          >
+            전체 초기화 실행
+          </button>
+        </div>
+      </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteModal && (
+        <DeleteConfirmModal
+          collection={deleteModal.collection}
+          label={deleteModal.label}
+          count={deleteModal.collection === 'all' 
+            ? Object.values(collectionCounts).reduce((a, b) => a + b, 0)
+            : collectionCounts[deleteModal.collection] || 0
+          }
+          onClose={() => setDeleteModal(null)}
+          onSuccess={() => {
+            setDeleteModal(null);
+            loadCollectionCounts();
+          }}
+        />
+      )}
+
       {/* Invite Modal */}
       {showInviteModal && (
         <InviteAdminModal
@@ -141,6 +279,227 @@ export default function AdminSettings() {
           inviteAdmin={inviteAdmin}
         />
       )}
+    </div>
+  );
+}
+
+function CollectionDeleteRow({ label, collection, count, icon, onDelete }) {
+  return (
+    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+      <div className="flex items-center gap-3">
+        <span className="text-xl">{icon}</span>
+        <div>
+          <span className="font-medium text-slate-700">{label}</span>
+          <span className="text-sm text-slate-400 ml-2">({collection})</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-slate-500">{count}건</span>
+        <button
+          onClick={onDelete}
+          disabled={count === 0}
+          className="px-3 py-1.5 bg-red-100 text-red-600 rounded-lg text-sm font-medium hover:bg-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          초기화
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SeasonDataDelete({ seasons, onDelete }) {
+  const [selectedSeasonId, setSelectedSeasonId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+
+  const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
+
+  const handleDelete = async () => {
+    if (!selectedSeasonId || confirmText !== '삭제합니다') return;
+
+    setLoading(true);
+    try {
+      // 해당 학기의 수강신청 삭제
+      const enrollmentsQuery = query(
+        collection(db, 'enrollments'),
+        where('seasonId', '==', selectedSeasonId)
+      );
+      const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
+      
+      // 해당 학기의 강좌 삭제
+      const coursesQuery = query(
+        collection(db, 'courses'),
+        where('seasonId', '==', selectedSeasonId)
+      );
+      const coursesSnapshot = await getDocs(coursesQuery);
+
+      // Batch 삭제
+      const batchSize = 450;
+      const allDocs = [...enrollmentsSnapshot.docs, ...coursesSnapshot.docs];
+      
+      for (let i = 0; i < allDocs.length; i += batchSize) {
+        const batch = writeBatch(db);
+        const chunk = allDocs.slice(i, i + batchSize);
+        chunk.forEach(doc => batch.delete(doc.ref));
+        await batch.commit();
+      }
+
+      alert(`${selectedSeason.name} 학기의 데이터가 삭제되었습니다.\n- 수강신청: ${enrollmentsSnapshot.size}건\n- 강좌: ${coursesSnapshot.size}건`);
+      setSelectedSeasonId('');
+      setConfirmText('');
+      onDelete();
+    } catch (error) {
+      console.error('Delete failed:', error);
+      alert('삭제에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-4">
+        <select
+          value={selectedSeasonId}
+          onChange={(e) => {
+            setSelectedSeasonId(e.target.value);
+            setConfirmText('');
+          }}
+          className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500"
+        >
+          <option value="">학기 선택</option>
+          {seasons.map(season => (
+            <option key={season.id} value={season.id}>{season.name}</option>
+          ))}
+        </select>
+      </div>
+
+      {selectedSeasonId && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <p className="text-sm text-amber-800 mb-3">
+            <strong>{selectedSeason?.name}</strong> 학기의 강좌 및 수강신청 데이터를 삭제합니다.
+            <br />확인을 위해 아래에 "삭제합니다"를 입력해주세요.
+          </p>
+          <input
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder="삭제합니다"
+            className="w-full px-4 py-2 bg-white border border-amber-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 mb-3"
+          />
+          <button
+            onClick={handleDelete}
+            disabled={loading || confirmText !== '삭제합니다'}
+            className="w-full py-2.5 bg-amber-600 text-white rounded-xl font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? '삭제 중...' : '선택 학기 데이터 삭제'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeleteConfirmModal({ collection, label, count, onClose, onSuccess }) {
+  const [confirmText, setConfirmText] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const deleteCollectionData = async (collectionName) => {
+    const { collection: firestoreCollection } = await import('firebase/firestore');
+    const snapshot = await getDocs(firestoreCollection(db, collectionName));
+    const batchSize = 450;
+    
+    for (let i = 0; i < snapshot.docs.length; i += batchSize) {
+      const batch = writeBatch(db);
+      const chunk = snapshot.docs.slice(i, i + batchSize);
+      chunk.forEach(d => batch.delete(d.ref));
+      await batch.commit();
+    }
+    
+    return snapshot.size;
+  };
+
+  const handleDelete = async () => {
+    if (confirmText !== '삭제합니다') return;
+
+    setLoading(true);
+    try {
+      if (collection === 'all') {
+        // 전체 삭제
+        const collections = ['enrollments', 'courses', 'students', 'notifications', 'attendance', 'classes'];
+        let totalDeleted = 0;
+        
+        for (const col of collections) {
+          const deleted = await deleteCollectionData(col);
+          totalDeleted += deleted;
+        }
+        
+        alert(`전체 데이터 ${totalDeleted}건이 삭제되었습니다.`);
+      } else {
+        // 개별 컬렉션 삭제
+        const deleted = await deleteCollectionData(collection);
+        alert(`${label} 데이터 ${deleted}건이 삭제되었습니다.`);
+      }
+      
+      onSuccess();
+    } catch (error) {
+      console.error('Delete failed:', error);
+      alert('삭제에 실패했습니다: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center">
+            <AlertTriangle className="w-6 h-6 text-red-600" />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-slate-900">데이터 삭제 확인</h2>
+            <p className="text-sm text-slate-500">{label} ({count}건)</p>
+          </div>
+        </div>
+
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+          <p className="text-sm text-red-800">
+            <strong>경고:</strong> 이 작업은 되돌릴 수 없습니다.
+            <br />"{label}" 데이터 {count}건이 영구적으로 삭제됩니다.
+          </p>
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-slate-700 mb-2">
+            확인을 위해 "삭제합니다"를 입력해주세요.
+          </label>
+          <input
+            type="text"
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            placeholder="삭제합니다"
+            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500"
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50"
+          >
+            취소
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={loading || confirmText !== '삭제합니다'}
+            className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-medium hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            {loading ? '삭제 중...' : '삭제 실행'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
