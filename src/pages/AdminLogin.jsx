@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { BookOpen, Lock, ArrowRight, User } from 'lucide-react';
+import { Lock, ArrowRight, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function AdminLogin() {
@@ -50,11 +50,9 @@ export default function AdminLogin() {
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8 animate-fade-in-up">
         <div className="text-center">
-          <div className="mx-auto w-12 h-12 bg-slate-900 rounded-xl flex items-center justify-center mb-4 shadow-lg">
-            <BookOpen className="text-white w-7 h-7" />
-          </div>
+          <img src="/logo.png" alt="ETOOS247.IC" className="mx-auto w-12 h-12 object-contain mb-4" />
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">
-            ACADEMY<span className="text-[#00b6b2]">.OS</span>
+            ETOOS247<span className="text-[#00b6b2]">.IC</span>
           </h2>
           <p className="mt-2 text-slate-500">관리자 로그인</p>
         </div>
