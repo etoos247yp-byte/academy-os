@@ -1,4 +1,4 @@
-import { PERIODS, CATEGORY_COLORS } from '../constants';
+import { PERIODS, CATEGORY_COLORS, DAYS } from '../constants';
 
 /**
  * Generate student ID from name and last 4 digits of phone
@@ -8,13 +8,62 @@ export const generateStudentId = (name, phone) => {
 };
 
 /**
- * Format schedule string from day, start period, and end period
+ * Format schedule string from day, start period, and end period (legacy format)
  */
 export const formatSchedule = (day, startP, endP) => {
   const startInfo = PERIODS.find(p => p.id === startP);
   const endInfo = PERIODS.find(p => p.id === endP);
   if (!startInfo || !endInfo) return `${day} (시간 미정)`;
   return `${day} ${startInfo.time} (${startP}교시) ~ ${endP}교시`;
+};
+
+/**
+ * Format multi-schedule array to display string
+ * e.g., [{ day: '화', startPeriod: 1, endPeriod: 2 }, { day: '수', startPeriod: 3, endPeriod: 4 }]
+ * => "화 1~2교시, 수 3~4교시"
+ */
+export const formatSchedules = (schedules) => {
+  if (!schedules || schedules.length === 0) {
+    return '시간 미정';
+  }
+  
+  // Sort schedules by day order, then by startPeriod
+  const dayOrder = DAYS;
+  const sorted = [...schedules].sort((a, b) => {
+    const dayDiff = dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+    if (dayDiff !== 0) return dayDiff;
+    return a.startPeriod - b.startPeriod;
+  });
+  
+  return sorted.map(s => {
+    const startInfo = PERIODS.find(p => p.id === s.startPeriod);
+    if (s.startPeriod === s.endPeriod) {
+      return `${s.day} ${s.startPeriod}교시`;
+    }
+    return `${s.day} ${s.startPeriod}~${s.endPeriod}교시`;
+  }).join(', ');
+};
+
+/**
+ * Format multi-schedule with time info
+ */
+export const formatSchedulesWithTime = (schedules) => {
+  if (!schedules || schedules.length === 0) {
+    return '시간 미정';
+  }
+  
+  const dayOrder = DAYS;
+  const sorted = [...schedules].sort((a, b) => {
+    const dayDiff = dayOrder.indexOf(a.day) - dayOrder.indexOf(b.day);
+    if (dayDiff !== 0) return dayDiff;
+    return a.startPeriod - b.startPeriod;
+  });
+  
+  return sorted.map(s => {
+    const startInfo = PERIODS.find(p => p.id === s.startPeriod);
+    const time = startInfo ? startInfo.time : '';
+    return `${s.day} ${time} (${s.startPeriod}~${s.endPeriod}교시)`;
+  }).join(' / ');
 };
 
 /**
@@ -25,23 +74,53 @@ export const getCategoryColor = (category) => {
 };
 
 /**
- * Check if two courses have time conflicts
+ * Check if two schedule slots have time conflicts
+ */
+const scheduleSlotsConflict = (slot1, slot2) => {
+  // Different days = no conflict
+  if (slot1.day !== slot2.day) return false;
+  
+  // Check period overlap
+  return slot1.startPeriod <= slot2.endPeriod && slot1.endPeriod >= slot2.startPeriod;
+};
+
+/**
+ * Check if two courses have time conflicts (multi-schedule aware)
+ * Compares ALL schedule slots of both courses
  */
 export const hasTimeConflict = (course1, course2) => {
-  // Parse days
-  const days1 = course1.day.split('/');
-  const days2 = course2.day.split('/');
+  // Get schedules arrays (supports both old and new format)
+  const schedules1 = course1.schedules || [];
+  const schedules2 = course2.schedules || [];
   
-  // Check if any days overlap
-  const daysOverlap = days1.some(d => days2.includes(d));
-  if (!daysOverlap) return false;
+  // If either course has no schedules, fallback to legacy format
+  const slots1 = schedules1.length > 0 ? schedules1 : getLegacyScheduleSlots(course1);
+  const slots2 = schedules2.length > 0 ? schedules2 : getLegacyScheduleSlots(course2);
   
-  // Check if periods overlap
-  const periodsOverlap = 
-    course1.startPeriod <= course2.endPeriod && 
-    course1.endPeriod >= course2.startPeriod;
+  // Check ALL combinations of slots
+  for (const slot1 of slots1) {
+    for (const slot2 of slots2) {
+      if (scheduleSlotsConflict(slot1, slot2)) {
+        return true;
+      }
+    }
+  }
   
-  return periodsOverlap;
+  return false;
+};
+
+/**
+ * Convert legacy course format (day, startPeriod, endPeriod) to schedule slots
+ */
+const getLegacyScheduleSlots = (course) => {
+  if (!course.day) return [];
+  
+  const days = course.day.split('/');
+  return days.map(day => ({
+    day: day.trim(),
+    startPeriod: parseInt(course.startPeriod) || 1,
+    endPeriod: parseInt(course.endPeriod) || 2,
+  }));
 };
 
 /**
@@ -53,6 +132,33 @@ export const checkConflicts = (newCourse, enrolledCourses) => {
   for (const enrolled of enrolledCourses) {
     if (hasTimeConflict(newCourse, enrolled)) {
       conflicts.push(enrolled);
+    }
+  }
+  
+  return conflicts;
+};
+
+/**
+ * Get detailed conflict information between two courses
+ * Returns array of conflicting slot pairs
+ */
+export const getDetailedConflicts = (course1, course2) => {
+  const schedules1 = course1.schedules || getLegacyScheduleSlots(course1);
+  const schedules2 = course2.schedules || getLegacyScheduleSlots(course2);
+  
+  const conflicts = [];
+  
+  for (const slot1 of schedules1) {
+    for (const slot2 of schedules2) {
+      if (scheduleSlotsConflict(slot1, slot2)) {
+        conflicts.push({
+          slot1,
+          slot2,
+          day: slot1.day,
+          overlapStart: Math.max(slot1.startPeriod, slot2.startPeriod),
+          overlapEnd: Math.min(slot1.endPeriod, slot2.endPeriod),
+        });
+      }
     }
   }
   
@@ -114,4 +220,36 @@ export const formatCurrency = (amount) => {
  */
 export const calculateTotalFee = (courses, pricePerCourse = 350000) => {
   return courses.length * pricePerCourse;
+};
+
+/**
+ * Format relative time (e.g., "3분 전", "1시간 전", "어제")
+ */
+export const formatRelativeTime = (date) => {
+  if (!date) return '';
+  
+  const d = date instanceof Date ? date : (date.toDate ? date.toDate() : new Date(date));
+  const now = new Date();
+  const diffMs = now - d;
+  const diffSeconds = Math.floor(diffMs / 1000);
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSeconds < 60) {
+    return '방금 전';
+  } else if (diffMinutes < 60) {
+    return `${diffMinutes}분 전`;
+  } else if (diffHours < 24) {
+    return `${diffHours}시간 전`;
+  } else if (diffDays === 1) {
+    return '어제';
+  } else if (diffDays < 7) {
+    return `${diffDays}일 전`;
+  } else {
+    return d.toLocaleDateString('ko-KR', {
+      month: 'short',
+      day: 'numeric',
+    });
+  }
 };

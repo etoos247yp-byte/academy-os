@@ -1,11 +1,31 @@
-import { useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Trash2, AlertCircle } from 'lucide-react';
 import { formatSchedule } from '../../lib/utils';
 import { WeeklySchedule } from './WeeklySchedule';
 import ConfirmationModal from './ConfirmationModal';
 
-export default function CartSidebar({ cart, onRemove, onSubmit, studentName, loading }) {
+/**
+ * 강좌 수에 따른 추가 금액 계산
+ * 3개 이하: 0원
+ * 4~6개: 10만원
+ * 7~9개: 20만원
+ * 10개 이상: 30만원
+ */
+const calculateExtraFee = (courseCount) => {
+  if (courseCount <= 3) return 0;
+  if (courseCount <= 6) return 100000;
+  if (courseCount <= 9) return 200000;
+  return 300000;
+};
+
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('ko-KR').format(amount) + '원';
+};
+
+export default function CartSidebar({ cart, enrolledCourses = [], onRemove, onSubmit, studentName, loading }) {
   const [showModal, setShowModal] = useState(false);
+  
+  const extraFee = useMemo(() => calculateExtraFee(cart.length), [cart.length]);
 
   const handleSubmitClick = () => {
     setShowModal(true);
@@ -56,11 +76,25 @@ export default function CartSidebar({ cart, onRemove, onSubmit, studentName, loa
             </div>
           )}
 
-          <div className="border-t border-gray-100 pt-4">
+          <div className="border-t border-gray-100 pt-4 space-y-2">
             <div className="flex justify-between text-sm">
               <span className="text-slate-500">총 강좌 수</span>
               <span className="font-medium text-slate-900">{cart.length} 과목</span>
             </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">추가 금액</span>
+              <span className={`font-bold ${extraFee > 0 ? 'text-orange-500' : 'text-green-600'}`}>
+                {extraFee > 0 ? `+${formatCurrency(extraFee)}` : '없음'}
+              </span>
+            </div>
+            {extraFee > 0 && (
+              <div className="flex items-start gap-2 mt-2 p-2 bg-orange-50 rounded-lg">
+                <AlertCircle className="w-4 h-4 text-orange-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-orange-700">
+                  4과목 이상 신청 시 추가 금액이 발생합니다.
+                </p>
+              </div>
+            )}
           </div>
 
           <button 
@@ -73,7 +107,10 @@ export default function CartSidebar({ cart, onRemove, onSubmit, studentName, loa
         </div>
 
         {/* Real-time Schedule Preview */}
-        <WeeklySchedule enrolledCourses={cart} />
+        <WeeklySchedule 
+          enrolledCourses={enrolledCourses} 
+          cartCourses={cart} 
+        />
       </div>
 
       {/* Confirmation Modal */}

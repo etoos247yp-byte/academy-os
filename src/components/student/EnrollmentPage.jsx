@@ -301,6 +301,7 @@ export default function EnrollmentPage() {
         <div className="lg:col-span-1">
           <CartSidebar 
             cart={cart} 
+            enrolledCourses={enrolledCourses}
             onRemove={removeFromCart}
             onSubmit={handleSubmit}
             studentName={student?.name}

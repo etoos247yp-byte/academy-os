@@ -85,20 +85,30 @@ export const submitEnrollmentRequest = async (studentId, courseIds, seasonId) =>
 };
 
 /**
- * Get all enrollments for a student
+ * Get active enrollments for a student (pending or approved only)
  */
 export const getStudentEnrollments = async (studentId) => {
+  // Query without orderBy to avoid composite index requirement with 'in' filter
   const enrollmentsQuery = query(
     collection(db, 'enrollments'),
     where('studentId', '==', studentId),
-    orderBy('enrolledAt', 'desc')
+    where('status', 'in', ['pending', 'approved'])
   );
   
   const snapshot = await getDocs(enrollmentsQuery);
-  return snapshot.docs.map(doc => ({
+  const results = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
   }));
+  
+  // Sort by enrolledAt in JavaScript (descending order)
+  results.sort((a, b) => {
+    const aTime = a.enrolledAt?.toMillis?.() || a.enrolledAt?.seconds * 1000 || 0;
+    const bTime = b.enrolledAt?.toMillis?.() || b.enrolledAt?.seconds * 1000 || 0;
+    return bTime - aTime;
+  });
+  
+  return results;
 };
 
 /**
@@ -277,18 +287,27 @@ export const batchApproveEnrollments = async (enrollmentIds, adminUid) => {
  * Get enrollments by course (for admin to see who enrolled)
  */
 export const getEnrollmentsByCourse = async (courseId) => {
+  // Query without orderBy to avoid composite index requirement with 'in' filter
   const enrollmentsQuery = query(
     collection(db, 'enrollments'),
     where('courseId', '==', courseId),
-    where('status', 'in', ['pending', 'approved']),
-    orderBy('enrolledAt', 'asc')
+    where('status', 'in', ['pending', 'approved'])
   );
   
   const snapshot = await getDocs(enrollmentsQuery);
-  return snapshot.docs.map(doc => ({
+  const results = snapshot.docs.map(doc => ({
     id: doc.id,
     ...doc.data()
   }));
+  
+  // Sort by enrolledAt in JavaScript (ascending order)
+  results.sort((a, b) => {
+    const aTime = a.enrolledAt?.toMillis?.() || a.enrolledAt?.seconds * 1000 || 0;
+    const bTime = b.enrolledAt?.toMillis?.() || b.enrolledAt?.seconds * 1000 || 0;
+    return aTime - bTime;
+  });
+  
+  return results;
 };
 
 /**

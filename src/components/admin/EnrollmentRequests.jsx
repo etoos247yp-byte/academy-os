@@ -3,6 +3,7 @@ import { Check, X, Clock, AlertCircle, Download } from 'lucide-react';
 import { subscribeToPendingEnrollments, approveEnrollment, rejectEnrollment, batchApproveEnrollments } from '../../lib/enrollmentService';
 import { getCourse } from '../../lib/courseService';
 import { getStudent } from '../../lib/studentService';
+import { createApprovalNotification, createRejectionNotification } from '../../lib/notificationService';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDateTime } from '../../lib/utils';
 import { exportToExcel } from '../../lib/excelUtils';
@@ -63,7 +64,19 @@ export default function EnrollmentRequests() {
   const handleApprove = async (enrollmentId) => {
     setProcessing(prev => ({ ...prev, [enrollmentId]: true }));
     try {
+      // Find the request to get student and course info
+      const request = enrichedRequests.find(r => r.id === enrollmentId);
+      
       await approveEnrollment(enrollmentId, admin.uid);
+      
+      // Create approval notification
+      if (request) {
+        await createApprovalNotification(
+          request.studentId,
+          request.course?.title || '강좌',
+          request.courseId
+        );
+      }
     } catch (error) {
       console.error('Approve failed:', error);
       alert('승인에 실패했습니다.');
@@ -75,7 +88,21 @@ export default function EnrollmentRequests() {
   const handleReject = async (enrollmentId, reason) => {
     setProcessing(prev => ({ ...prev, [enrollmentId]: true }));
     try {
+      // Find the request to get student and course info
+      const request = enrichedRequests.find(r => r.id === enrollmentId);
+      
       await rejectEnrollment(enrollmentId, admin.uid, reason);
+      
+      // Create rejection notification
+      if (request) {
+        await createRejectionNotification(
+          request.studentId,
+          request.course?.title || '강좌',
+          request.courseId,
+          reason
+        );
+      }
+      
       setRejectModal(null);
     } catch (error) {
       console.error('Reject failed:', error);
@@ -97,6 +124,21 @@ export default function EnrollmentRequests() {
 
     try {
       await batchApproveEnrollments(selectedIds, admin.uid);
+      
+      // Create notifications for all approved enrollments
+      const notificationPromises = selectedIds.map(enrollmentId => {
+        const request = enrichedRequests.find(r => r.id === enrollmentId);
+        if (request) {
+          return createApprovalNotification(
+            request.studentId,
+            request.course?.title || '강좌',
+            request.courseId
+          );
+        }
+        return Promise.resolve();
+      });
+      
+      await Promise.all(notificationPromises);
       setSelectedIds([]);
     } catch (error) {
       console.error('Batch approve failed:', error);

@@ -1,5 +1,5 @@
 import { User, Clock, Briefcase, Plus, Check, X, Clock3 } from 'lucide-react';
-import { formatSchedule } from '../../lib/utils';
+import { formatSchedule, formatSchedules } from '../../lib/utils';
 import { STATUS_CONFIG } from '../../constants';
 
 export default function CourseCard({ course, onAdd, isInCart, enrollmentStatus }) {
@@ -75,7 +75,7 @@ export default function CourseCard({ course, onAdd, isInCart, enrollmentStatus }
         </div>
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-slate-400" />
-          <span>{formatSchedule(course.day, course.startPeriod, course.endPeriod)}</span>
+          <span>{course.schedules ? formatSchedules(course.schedules) : formatSchedule(course.day, course.startPeriod, course.endPeriod)}</span>
         </div>
         <div className="flex items-center gap-2">
           <Briefcase className="w-4 h-4 text-slate-400" />

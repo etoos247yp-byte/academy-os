@@ -1,5 +1,19 @@
-import { X, AlertTriangle, FileText } from 'lucide-react';
+import { X, AlertTriangle, FileText, Coins } from 'lucide-react';
 import { formatSchedule } from '../../lib/utils';
+
+/**
+ * 강좌 수에 따른 추가 금액 계산
+ */
+const calculateExtraFee = (courseCount) => {
+  if (courseCount <= 3) return 0;
+  if (courseCount <= 6) return 100000;
+  if (courseCount <= 9) return 200000;
+  return 300000;
+};
+
+const formatCurrency = (amount) => {
+  return new Intl.NumberFormat('ko-KR').format(amount) + '원';
+};
 
 export default function ConfirmationModal({ 
   isOpen, 
@@ -16,6 +30,8 @@ export default function ConfirmationModal({
     month: '2-digit',
     day: '2-digit',
   });
+
+  const extraFee = calculateExtraFee(cart.length);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -91,6 +107,21 @@ export default function ConfirmationModal({
               ))}
             </div>
           </div>
+
+          {/* Extra Fee Notice */}
+          {extraFee > 0 && (
+            <div className="mt-4 p-4 bg-orange-50 rounded-xl border border-orange-200">
+              <div className="flex gap-3">
+                <Coins className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-orange-800">
+                  <p className="font-semibold mb-1">추가 금액 안내</p>
+                  <p className="text-orange-700">
+                    {cart.length}개 강좌 신청으로 <span className="font-bold text-orange-600">{formatCurrency(extraFee)}</span>의 추가 금액이 발생합니다.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Warning Notice */}
           <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
