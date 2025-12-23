@@ -231,6 +231,84 @@ const calculateEnrollmentStats = (courses) => {
   };
 };
 
+// Helper function to calculate courses per student
+const calculateCoursesPerStudent = (students, enrollments) => {
+  // 승인된 수강신청만 카운트
+  const approvedEnrollments = enrollments.filter(e => e.status === 'approved');
+  
+  // 학생별 수강 강좌 수 집계
+  const studentCourseCount = {};
+  approvedEnrollments.forEach(e => {
+    studentCourseCount[e.studentId] = (studentCourseCount[e.studentId] || 0) + 1;
+  });
+  
+  // 반에 배정된 학생만 필터링 (미배정 제외)
+  const assignedStudents = students.filter(s => s.class && s.class !== '미배정');
+  
+  // === 전체 통계 (반 배정된 학생만) ===
+  const studentsWithCourses = assignedStudents.filter(s => studentCourseCount[s.id] > 0);
+  const totalCoursesForActive = studentsWithCourses.reduce((sum, s) => 
+    sum + (studentCourseCount[s.id] || 0), 0);
+  const totalCoursesForAll = assignedStudents.reduce((sum, s) => 
+    sum + (studentCourseCount[s.id] || 0), 0);
+  
+  const overall = {
+    // 수강 학생 기준
+    avgForActive: studentsWithCourses.length > 0 
+      ? (totalCoursesForActive / studentsWithCourses.length).toFixed(1) 
+      : '0',
+    activeStudentCount: studentsWithCourses.length,
+    // 전체 학생 기준
+    avgForAll: assignedStudents.length > 0 
+      ? (totalCoursesForAll / assignedStudents.length).toFixed(1) 
+      : '0',
+    totalStudentCount: assignedStudents.length,
+    // 수강률
+    participationRate: assignedStudents.length > 0
+      ? ((studentsWithCourses.length / assignedStudents.length) * 100).toFixed(0)
+      : '0',
+  };
+  
+  // === 반별 통계 ===
+  const classStats = {};
+  assignedStudents.forEach(student => {
+    const className = student.class;
+    if (!classStats[className]) {
+      classStats[className] = { 
+        activeStudents: [], 
+        allStudents: [],
+      };
+    }
+    classStats[className].allStudents.push(student);
+    if (studentCourseCount[student.id] > 0) {
+      classStats[className].activeStudents.push(student);
+    }
+  });
+  
+  const byClass = Object.entries(classStats).map(([name, data]) => {
+    const totalForActive = data.activeStudents.reduce((sum, s) => 
+      sum + (studentCourseCount[s.id] || 0), 0);
+    const totalForAll = data.allStudents.reduce((sum, s) => 
+      sum + (studentCourseCount[s.id] || 0), 0);
+    
+    return {
+      name,
+      // 수강 학생 기준
+      avgForActive: data.activeStudents.length > 0 
+        ? (totalForActive / data.activeStudents.length).toFixed(1) 
+        : '0',
+      activeCount: data.activeStudents.length,
+      // 전체 학생 기준  
+      avgForAll: data.allStudents.length > 0 
+        ? (totalForAll / data.allStudents.length).toFixed(1) 
+        : '0',
+      totalCount: data.allStudents.length,
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name)); // 반 이름순 정렬
+  
+  return { overall, byClass };
+};
+
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState({
@@ -329,6 +407,11 @@ export default function AdminDashboard() {
   const enrollmentStats = useMemo(
     () => calculateEnrollmentStats(rawData.courses),
     [rawData.courses]
+  );
+
+  const coursesPerStudent = useMemo(
+    () => calculateCoursesPerStudent(rawData.students, rawData.enrollments),
+    [rawData.students, rawData.enrollments]
   );
 
   if (loading) {
@@ -442,6 +525,85 @@ export default function AdminDashboard() {
             최근 30일 기준 ({cancellationStats.periodDays}일 이내 취소 {cancellationStats.cancelled}건)
           </div>
         </div>
+      </div>
+
+      {/* Courses Per Student Card */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-8">
+        <h3 className="font-bold text-slate-900 flex items-center gap-2 mb-4">
+          <BookOpen className="w-5 h-5 text-[#00b6b2]" />
+          학생당 평균 수강
+        </h3>
+        
+        {/* 전체 통계 */}
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="bg-blue-50 rounded-xl p-4 text-center">
+            <div className="text-2xl font-bold text-blue-600">
+              {coursesPerStudent.overall.avgForActive}개
+            </div>
+            <div className="text-sm text-blue-600">수강 학생 기준</div>
+            <div className="text-xs text-blue-400 mt-1">
+              ({coursesPerStudent.overall.activeStudentCount}명이 수강 중)
+            </div>
+          </div>
+          <div className="bg-slate-50 rounded-xl p-4 text-center">
+            <div className="text-2xl font-bold text-slate-700">
+              {coursesPerStudent.overall.avgForAll}개
+            </div>
+            <div className="text-sm text-slate-600">전체 학생 기준</div>
+            <div className="text-xs text-slate-400 mt-1">
+              (전체 {coursesPerStudent.overall.totalStudentCount}명)
+            </div>
+          </div>
+        </div>
+        
+        {/* 수강률 */}
+        <div className="bg-green-50 rounded-lg p-3 mb-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-green-700">수강률</span>
+            <span className="font-bold text-green-700">
+              {coursesPerStudent.overall.participationRate}%
+              <span className="font-normal text-green-600 ml-1">
+                ({coursesPerStudent.overall.totalStudentCount}명 중 {coursesPerStudent.overall.activeStudentCount}명 수강)
+              </span>
+            </span>
+          </div>
+          <div className="w-full bg-green-200 rounded-full h-2 mt-2">
+            <div 
+              className="bg-green-500 h-2 rounded-full transition-all"
+              style={{ width: `${coursesPerStudent.overall.participationRate}%` }}
+            />
+          </div>
+        </div>
+        
+        {/* 반별 현황 */}
+        {coursesPerStudent.byClass.length > 0 && (
+          <>
+            <div className="text-sm font-medium text-slate-700 mb-2">반별 현황</div>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {coursesPerStudent.byClass.map(cls => (
+                <div key={cls.name} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <span className="font-medium text-slate-700 min-w-[60px]">{cls.name}</span>
+                  <div className="flex gap-6 text-sm">
+                    <div className="text-blue-600">
+                      <span className="font-medium">{cls.avgForActive}개</span>
+                      <span className="text-blue-400 ml-1">수강자 ({cls.activeCount}명)</span>
+                    </div>
+                    <div className="text-slate-500">
+                      <span className="font-medium">{cls.avgForAll}개</span>
+                      <span className="text-slate-400 ml-1">전체 ({cls.totalCount}명)</span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {coursesPerStudent.byClass.length === 0 && coursesPerStudent.overall.totalStudentCount === 0 && (
+          <div className="text-center py-4 text-slate-400">
+            반에 배정된 학생이 없습니다.
+          </div>
+        )}
       </div>
 
       {/* Pending Requests Preview */}
