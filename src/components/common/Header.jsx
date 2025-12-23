@@ -21,9 +21,9 @@ export function StudentHeader({ student, onLogout }) {
             className="flex items-center gap-2 cursor-pointer" 
             onClick={() => navigate('/student/courses')}
           >
-            <img src="/logo.png" alt="ETOOS247.IC" className="w-8 h-8 object-contain" />
+            <img src="/logo.png" alt="ETOOS247.ICHEON" className="w-12 h-12 object-contain" />
             <span className="text-xl font-bold tracking-tight text-slate-900">
-              ETOOS247<span className="text-[#00b6b2]">.IC</span>
+              ETOOS247<span className="text-[#00b6b2]">.ICHEON</span>
             </span>
           </div>
           
@@ -121,9 +121,9 @@ export function AdminHeader({ admin, onLogout }) {
             className="flex items-center gap-2 cursor-pointer" 
             onClick={() => navigate('/admin/dashboard')}
           >
-            <img src="/logo.png" alt="ETOOS247.IC" className="w-8 h-8 object-contain" />
+            <img src="/logo.png" alt="ETOOS247.ICHEON" className="w-12 h-12 object-contain" />
             <span className="text-xl font-bold tracking-tight text-slate-900">
-              ETOOS247<span className="text-[#00b6b2]">.IC</span>
+              ETOOS247<span className="text-[#00b6b2]">.ICHEON</span>
               <span className="ml-2 text-xs bg-slate-800 text-white px-2 py-0.5 rounded uppercase tracking-wider">Admin</span>
             </span>
           </div>

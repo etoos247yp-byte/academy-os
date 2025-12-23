@@ -50,9 +50,9 @@ export default function AdminLogin() {
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8 animate-fade-in-up">
         <div className="text-center">
-          <img src="/logo.png" alt="ETOOS247.IC" className="mx-auto w-12 h-12 object-contain mb-4" />
+          <img src="/logo.png" alt="ETOOS247.ICHEON" className="mx-auto w-24 h-24 object-contain mb-4" />
           <h2 className="text-3xl font-bold tracking-tight text-slate-900">
-            ETOOS247<span className="text-[#00b6b2]">.IC</span>
+            ETOOS247<span className="text-[#00b6b2]">.ICHEON</span>
           </h2>
           <p className="mt-2 text-slate-500">관리자 로그인</p>
         </div>
