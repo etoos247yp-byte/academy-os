@@ -1,13 +1,20 @@
 import { useState, useEffect } from 'react';
-import { Plus, Trash2, Edit2, X, Briefcase, Users, Download, Upload, AlertTriangle, FileSpreadsheet } from 'lucide-react';
+import { Plus, Trash2, Edit2, X, Briefcase, Users, Download, Upload, AlertTriangle, FileSpreadsheet, Calendar, CheckCircle2, XCircle, Clock, AlertCircle, Save, Lock } from 'lucide-react';
 import { getAllCourses, createCourse, updateCourse, deleteCourse, batchCreateCourses } from '../../lib/courseService';
-import { getAllSeasons } from '../../lib/seasonService';
+import { getAllSeasons, getNonArchivedSeasons } from '../../lib/seasonService';
 import { getEnrollmentsByCourse } from '../../lib/enrollmentService';
 import { getStudent } from '../../lib/studentService';
+import { 
+  bulkCheckAttendance, 
+  getAttendanceByDate, 
+  getAttendanceStats,
+  ATTENDANCE_STATUS,
+  ATTENDANCE_STATUS_CONFIG 
+} from '../../lib/attendanceService';
 import { useAuth } from '../../contexts/AuthContext';
-import { formatSchedule, formatDateTime } from '../../lib/utils';
+import { formatSchedule, formatSchedules, formatDateTime } from '../../lib/utils';
 import { CATEGORIES, LEVELS, DAYS, PERIODS } from '../../constants';
-import { exportToExcel, exportAttendanceSheet, parseExcelFile, downloadTemplate } from '../../lib/excelUtils';
+import { exportToExcel, exportCoursesToExcel, exportAttendanceSheet, exportAttendanceData, parseExcelFile, downloadTemplate, downloadCourseTemplate, parseSchedulesFromExcel } from '../../lib/excelUtils';
 import LoadingSpinner from '../common/LoadingSpinner';
 
 export default function CourseManagement() {
@@ -20,6 +27,7 @@ export default function CourseManagement() {
   const [editingCourse, setEditingCourse] = useState(null);
   const [showStudentsModal, setShowStudentsModal] = useState(null);
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
+  const [showAttendanceModal, setShowAttendanceModal] = useState(null);
 
   const loadData = async () => {
     try {
@@ -44,6 +52,15 @@ export default function CourseManagement() {
     selectedSeason === 'all' || course.seasonId === selectedSeason
   );
 
+  // Helper to check if a course belongs to an archived season
+  const isSeasonArchived = (seasonId) => {
+    const season = seasons.find(s => s.id === seasonId);
+    return season?.isArchived === true;
+  };
+
+  // Get non-archived seasons for modals
+  const nonArchivedSeasons = seasons.filter(s => !s.isArchived);
+
   const handleDelete = async (courseId, courseTitle) => {
     if (!confirm(`"${courseTitle}" 강좌를 삭제하시겠습니까?`)) {
       return;
@@ -59,22 +76,7 @@ export default function CourseManagement() {
   };
 
   const handleExportExcel = () => {
-    const columns = [
-      { key: 'title', header: '강좌명' },
-      { key: 'instructor', header: '강사' },
-      { key: 'category', header: '카테고리' },
-      { key: 'schedule', header: '시간' },
-      { key: 'room', header: '강의실' },
-      { key: 'capacity', header: '정원' },
-      { key: 'enrolled', header: '신청수' },
-    ];
-    
-    const data = filteredCourses.map(c => ({
-      ...c,
-      schedule: formatSchedule(c.day, c.startPeriod, c.endPeriod)
-    }));
-    
-    exportToExcel(data, columns, '강좌목록');
+    exportCoursesToExcel(filteredCourses, '강좌목록');
   };
 
   if (loading) {
@@ -141,50 +143,74 @@ export default function CourseManagement() {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filteredCourses.map((course) => (
-              <tr key={course.id} className="hover:bg-slate-50/50">
-                <td className="p-4">
-                  <div className="font-medium text-slate-900">{course.title}</div>
-                  <div className="text-xs text-slate-500">{course.room}</div>
-                </td>
-                <td className="p-4 text-slate-600">{course.instructor}</td>
-                <td className="p-4">
-                  <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${course.color}`}>
-                    {course.category}
-                  </span>
-                </td>
-                <td className="p-4 text-sm text-slate-600">
-                  {formatSchedule(course.day, course.startPeriod, course.endPeriod)}
-                </td>
-                <td className="p-4">
-                  <button
-                    onClick={() => setShowStudentsModal(course)}
-                    className={`flex items-center gap-1 text-sm font-medium hover:underline ${
-                      course.enrolled >= course.capacity ? 'text-red-500' : 'text-slate-600 hover:text-[#00b6b2]'
-                    }`}
-                  >
-                    <Users className="w-3.5 h-3.5" />
-                    {course.enrolled}/{course.capacity}명
-                  </button>
-                </td>
-                <td className="p-4">
-                  <div className="flex items-center justify-end gap-2">
+            {filteredCourses.map((course) => {
+              const archived = isSeasonArchived(course.seasonId);
+              return (
+                <tr key={course.id} className={`hover:bg-slate-50/50 ${archived ? 'opacity-60' : ''}`}>
+                  <td className="p-4">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-slate-900">{course.title}</span>
+                      {archived && (
+                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-slate-200 text-slate-500 text-xs rounded">
+                          <Lock className="w-3 h-3" />
+                          아카이브
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-500">{course.room}</div>
+                  </td>
+                  <td className="p-4 text-slate-600">{course.instructor}</td>
+                  <td className="p-4">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${course.color}`}>
+                      {course.category}
+                    </span>
+                  </td>
+                  <td className="p-4 text-sm text-slate-600">
+                    {course.schedules ? formatSchedules(course.schedules) : formatSchedule(course.day, course.startPeriod, course.endPeriod)}
+                  </td>
+                  <td className="p-4">
                     <button
-                      onClick={() => setEditingCourse(course)}
-                      className="p-2 text-slate-400 hover:text-[#00b6b2] hover:bg-slate-100 rounded-lg transition-colors"
+                      onClick={() => setShowStudentsModal(course)}
+                      className={`flex items-center gap-1 text-sm font-medium hover:underline ${
+                        course.enrolled >= course.capacity ? 'text-red-500' : 'text-slate-600 hover:text-[#00b6b2]'
+                      }`}
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Users className="w-3.5 h-3.5" />
+                      {course.enrolled}/{course.capacity}명
                     </button>
-                    <button
-                      onClick={() => handleDelete(course.id, course.title)}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className="p-4">
+                    <div className="flex items-center justify-end gap-2">
+                      {archived ? (
+                        <span className="text-xs text-slate-400 italic">읽기 전용</span>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => setShowAttendanceModal(course)}
+                            className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="출석 체크"
+                          >
+                            <Calendar className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setEditingCourse(course)}
+                            className="p-2 text-slate-400 hover:text-[#00b6b2] hover:bg-slate-100 rounded-lg transition-colors"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(course.id, course.title)}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
         
@@ -199,7 +225,7 @@ export default function CourseManagement() {
       {(showAddModal || editingCourse) && (
         <CourseModal
           course={editingCourse}
-          seasons={seasons}
+          seasons={nonArchivedSeasons}
           onClose={() => {
             setShowAddModal(false);
             setEditingCourse(null);
@@ -224,7 +250,7 @@ export default function CourseManagement() {
       {/* Bulk Upload Modal */}
       {showBulkUploadModal && (
         <CourseBulkUploadModal
-          seasons={seasons}
+          seasons={nonArchivedSeasons}
           onClose={() => setShowBulkUploadModal(false)}
           onSuccess={() => {
             setShowBulkUploadModal(false);
@@ -233,48 +259,115 @@ export default function CourseManagement() {
           adminUid={admin.uid}
         />
       )}
+
+      {/* Quick Attendance Modal */}
+      {showAttendanceModal && (
+        <QuickAttendanceModal
+          course={showAttendanceModal}
+          adminUid={admin.uid}
+          onClose={() => setShowAttendanceModal(null)}
+        />
+      )}
     </div>
   );
 }
 
 function CourseModal({ course, seasons, onClose, onSuccess, adminUid }) {
+  // Initialize schedules from course or default
+  const getInitialSchedules = () => {
+    if (course?.schedules && course.schedules.length > 0) {
+      return course.schedules.map(s => ({
+        day: s.day,
+        startPeriod: s.startPeriod,
+        endPeriod: s.endPeriod,
+      }));
+    }
+    // Fallback to legacy format
+    if (course?.day) {
+      const days = course.day.split('/');
+      return days.map(day => ({
+        day: day.trim(),
+        startPeriod: course.startPeriod || 1,
+        endPeriod: course.endPeriod || 2,
+      }));
+    }
+    // Default: one empty schedule slot
+    return [{ day: '월', startPeriod: 1, endPeriod: 2 }];
+  };
+
   const [formData, setFormData] = useState({
     title: course?.title || '',
     instructor: course?.instructor || '',
     category: course?.category || '수학',
     level: course?.level || '중급',
-    day: course?.day?.split('/') || [],
-    startPeriod: course?.startPeriod || 1,
-    endPeriod: course?.endPeriod || 2,
     room: course?.room || '',
     capacity: course?.capacity || 20,
     description: course?.description || '',
     seasonId: course?.seasonId || (seasons[0]?.id || ''),
   });
+  const [schedules, setSchedules] = useState(getInitialSchedules);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const toggleDay = (day) => {
-    setFormData(prev => {
-      const days = prev.day.includes(day)
-        ? prev.day.filter(d => d !== day)
-        : [...prev.day, day].sort((a, b) => DAYS.indexOf(a) - DAYS.indexOf(b));
-      return { ...prev, day: days };
-    });
+  const addScheduleSlot = () => {
+    setSchedules([...schedules, { day: '월', startPeriod: 1, endPeriod: 2 }]);
+  };
+
+  const removeScheduleSlot = (index) => {
+    if (schedules.length <= 1) {
+      setError('최소 1개의 시간대가 필요합니다.');
+      return;
+    }
+    setSchedules(schedules.filter((_, i) => i !== index));
+  };
+
+  const updateScheduleSlot = (index, field, value) => {
+    const updated = [...schedules];
+    updated[index] = { ...updated[index], [field]: value };
+    setSchedules(updated);
+  };
+
+  const validateSchedules = () => {
+    for (let i = 0; i < schedules.length; i++) {
+      const s = schedules[i];
+      if (parseInt(s.startPeriod) > parseInt(s.endPeriod)) {
+        return `시간대 ${i + 1}: 종료 교시가 시작 교시보다 빠를 수 없습니다.`;
+      }
+    }
+    
+    // Check for internal conflicts (same course schedules overlapping)
+    for (let i = 0; i < schedules.length; i++) {
+      for (let j = i + 1; j < schedules.length; j++) {
+        const s1 = schedules[i];
+        const s2 = schedules[j];
+        if (s1.day === s2.day) {
+          const overlap = parseInt(s1.startPeriod) <= parseInt(s2.endPeriod) && 
+                          parseInt(s1.endPeriod) >= parseInt(s2.startPeriod);
+          if (overlap) {
+            return `시간대 ${i + 1}과 시간대 ${j + 1}이 같은 요일에 겹칩니다.`;
+          }
+        }
+      }
+    }
+    
+    return null;
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (formData.day.length === 0) {
-      setError('수업 요일을 선택해주세요.');
+    if (schedules.length === 0) {
+      setError('최소 1개의 시간대를 설정해주세요.');
       return;
     }
-    if (parseInt(formData.startPeriod) > parseInt(formData.endPeriod)) {
-      setError('종료 교시가 시작 교시보다 빠를 수 없습니다.');
+
+    const scheduleError = validateSchedules();
+    if (scheduleError) {
+      setError(scheduleError);
       return;
     }
+
     if (!formData.seasonId) {
       setError('학기를 선택해주세요.');
       return;
@@ -282,11 +375,16 @@ function CourseModal({ course, seasons, onClose, onSuccess, adminUid }) {
 
     setLoading(true);
     try {
+      // Prepare schedules with parsed integers
+      const normalizedSchedules = schedules.map(s => ({
+        day: s.day,
+        startPeriod: parseInt(s.startPeriod),
+        endPeriod: parseInt(s.endPeriod),
+      }));
+
       const courseData = {
         ...formData,
-        day: formData.day.join('/'),
-        startPeriod: parseInt(formData.startPeriod),
-        endPeriod: parseInt(formData.endPeriod),
+        schedules: normalizedSchedules,
         capacity: parseInt(formData.capacity),
       };
 
@@ -396,52 +494,88 @@ function CourseModal({ course, seasons, onClose, onSuccess, adminUid }) {
               </div>
             </div>
 
-            {/* Right Column */}
+            {/* Right Column - Schedule Slots */}
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-2">수업 요일</label>
-                <div className="flex gap-2">
-                  {DAYS.map(day => (
-                    <button
-                      type="button"
-                      key={day}
-                      onClick={() => toggleDay(day)}
-                      className={`w-9 h-9 rounded-full text-sm font-medium transition-all ${
-                        formData.day.includes(day)
-                          ? 'bg-[#00b6b2] text-white'
-                          : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                      }`}
-                    >
-                      {day}
-                    </button>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-slate-700">수업 시간대</label>
+                  <button
+                    type="button"
+                    onClick={addScheduleSlot}
+                    className="flex items-center gap-1 text-xs text-[#00b6b2] hover:text-[#009da0] font-medium"
+                  >
+                    <Plus className="w-3 h-3" />
+                    시간대 추가
+                  </button>
+                </div>
+                
+                <div className="space-y-3 max-h-[280px] overflow-y-auto">
+                  {schedules.map((schedule, index) => (
+                    <div key={index} className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-slate-500">시간대 {index + 1}</span>
+                        {schedules.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => removeScheduleSlot(index)}
+                            className="text-red-400 hover:text-red-600 p-1"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                      
+                      {/* Day selector */}
+                      <div className="mb-2">
+                        <label className="block text-xs text-slate-500 mb-1">요일</label>
+                        <div className="flex gap-1">
+                          {DAYS.map(day => (
+                            <button
+                              type="button"
+                              key={day}
+                              onClick={() => updateScheduleSlot(index, 'day', day)}
+                              className={`w-7 h-7 rounded-full text-xs font-medium transition-all ${
+                                schedule.day === day
+                                  ? 'bg-[#00b6b2] text-white'
+                                  : 'bg-white border border-slate-200 text-slate-500 hover:bg-slate-100'
+                              }`}
+                            >
+                              {day}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Period selectors */}
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1">
+                          <label className="block text-xs text-slate-500 mb-1">시작</label>
+                          <select
+                            value={schedule.startPeriod}
+                            onChange={(e) => updateScheduleSlot(index, 'startPeriod', e.target.value)}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
+                          >
+                            {PERIODS.map(p => (
+                              <option key={p.id} value={p.id}>{p.id}교시</option>
+                            ))}
+                          </select>
+                        </div>
+                        <span className="text-slate-400 pt-5">~</span>
+                        <div className="flex-1">
+                          <label className="block text-xs text-slate-500 mb-1">종료</label>
+                          <select
+                            value={schedule.endPeriod}
+                            onChange={(e) => updateScheduleSlot(index, 'endPeriod', e.target.value)}
+                            className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
+                          >
+                            {PERIODS.map(p => (
+                              <option key={p.id} value={p.id}>{p.id}교시</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
                   ))}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-500 mb-1">시작 교시</label>
-                  <select
-                    value={formData.startPeriod}
-                    onChange={(e) => setFormData({ ...formData, startPeriod: e.target.value })}
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
-                  >
-                    {PERIODS.map(p => (
-                      <option key={p.id} value={p.id}>{p.id}교시 ({p.time})</option>
-                    ))}
-                  </select>
-                </div>
-                <span className="text-slate-400 pt-5">~</span>
-                <div className="flex-1">
-                  <label className="block text-xs text-slate-500 mb-1">종료 교시</label>
-                  <select
-                    value={formData.endPeriod}
-                    onChange={(e) => setFormData({ ...formData, endPeriod: e.target.value })}
-                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
-                  >
-                    {PERIODS.map(p => (
-                      <option key={p.id} value={p.id}>{p.id}교시 ({p.time})</option>
-                    ))}
-                  </select>
                 </div>
               </div>
               <div>
@@ -687,32 +821,28 @@ function CourseBulkUploadModal({ seasons, onClose, onSuccess, adminUid }) {
     try {
       const data = await parseExcelFile(selectedFile);
       
-      // 데이터 정규화
-      const normalized = data.map(row => ({
-        title: String(row['강좌명'] || row['title'] || '').trim(),
-        instructor: String(row['강사'] || row['강사명'] || row['instructor'] || '').trim(),
-        category: String(row['카테고리'] || row['과목'] || row['category'] || '수학').trim(),
-        level: String(row['난이도'] || row['level'] || '중급').trim(),
-        day: String(row['요일'] || row['day'] || '').trim(),
-        startPeriod: parseInt(row['시작교시'] || row['startPeriod'] || 1),
-        endPeriod: parseInt(row['종료교시'] || row['endPeriod'] || 2),
-        room: String(row['강의실'] || row['room'] || '').trim(),
-        capacity: parseInt(row['정원'] || row['capacity'] || 20),
-        description: String(row['설명'] || row['description'] || '').trim(),
-      })).filter(row => row.title && row.instructor);
+      // 데이터 정규화 (다중 시간대 지원)
+      const normalized = data.map(row => {
+        // Parse schedules using the new parser
+        const schedules = parseSchedulesFromExcel(row);
+        
+        return {
+          title: String(row['강좌명'] || row['title'] || '').trim(),
+          instructor: String(row['강사'] || row['강사명'] || row['instructor'] || '').trim(),
+          category: String(row['카테고리'] || row['과목'] || row['category'] || '수학').trim(),
+          level: String(row['난이도'] || row['level'] || '중급').trim(),
+          schedules: schedules,
+          room: String(row['강의실'] || row['room'] || '').trim(),
+          capacity: parseInt(row['정원'] || row['capacity'] || 20),
+          description: String(row['설명'] || row['description'] || '').trim(),
+        };
+      }).filter(row => row.title && row.instructor && row.schedules.length > 0);
 
       if (normalized.length === 0) {
-        setError('유효한 데이터가 없습니다. 양식을 확인해주세요.');
+        setError('유효한 데이터가 없습니다. 양식을 확인해주세요. (강좌명, 강사, 시간표 필수)');
         setLoading(false);
         return;
       }
-
-      // 요일 형식 검증 및 변환 (월,화,수 -> 월/화/수)
-      normalized.forEach(course => {
-        if (course.day.includes(',')) {
-          course.day = course.day.split(',').map(d => d.trim()).join('/');
-        }
-      });
 
       // 카테고리 검증
       const validCategories = CATEGORIES.filter(c => c !== '전체');
@@ -739,19 +869,7 @@ function CourseBulkUploadModal({ seasons, onClose, onSuccess, adminUid }) {
   };
 
   const handleDownloadTemplate = () => {
-    const columns = [
-      { header: '강좌명', example: '고등 수학 심화' },
-      { header: '강사', example: '김선생' },
-      { header: '카테고리', example: '수학' },
-      { header: '난이도', example: '중급' },
-      { header: '요일', example: '월/수' },
-      { header: '시작교시', example: '1' },
-      { header: '종료교시', example: '2' },
-      { header: '강의실', example: '301호' },
-      { header: '정원', example: '20' },
-      { header: '설명', example: '고등학교 수학 심화 과정' },
-    ];
-    downloadTemplate(columns, '강좌등록');
+    downloadCourseTemplate();
   };
 
   const handleSubmit = async () => {
@@ -854,8 +972,9 @@ function CourseBulkUploadModal({ seasons, onClose, onSuccess, adminUid }) {
                 <ul className="text-slate-500 space-y-1">
                   <li>• <strong>카테고리</strong>: 국어, 수학, 영어, 과탐, 사탐, 수리논술, 인문논술</li>
                   <li>• <strong>난이도</strong>: 초급, 중급, 고급, 실전</li>
-                  <li>• <strong>요일</strong>: 월/수 또는 월,수 형식 (여러 요일은 /나 ,로 구분)</li>
-                  <li>• <strong>교시</strong>: 1~12 (숫자만)</li>
+                  <li>• <strong>시간표</strong>: "화 1~2, 수 3~4" 형식 (다중 시간대 지원)</li>
+                  <li>• <strong>레거시 형식</strong>: 요일/시작교시/종료교시 컬럼도 지원</li>
+                  <li>• <strong>교시</strong>: 1~12</li>
                 </ul>
               </div>
 
@@ -900,8 +1019,7 @@ function CourseBulkUploadModal({ seasons, onClose, onSuccess, adminUid }) {
                         <th className="text-left p-3 font-medium text-slate-600 whitespace-nowrap">강좌명</th>
                         <th className="text-left p-3 font-medium text-slate-600 whitespace-nowrap">강사</th>
                         <th className="text-left p-3 font-medium text-slate-600 whitespace-nowrap">카테고리</th>
-                        <th className="text-left p-3 font-medium text-slate-600 whitespace-nowrap">요일</th>
-                        <th className="text-left p-3 font-medium text-slate-600 whitespace-nowrap">교시</th>
+                        <th className="text-left p-3 font-medium text-slate-600 whitespace-nowrap">시간표</th>
                         <th className="text-left p-3 font-medium text-slate-600 whitespace-nowrap">강의실</th>
                         <th className="text-left p-3 font-medium text-slate-600 whitespace-nowrap">정원</th>
                       </tr>
@@ -916,8 +1034,7 @@ function CourseBulkUploadModal({ seasons, onClose, onSuccess, adminUid }) {
                               {item.category}
                             </span>
                           </td>
-                          <td className="p-3 text-slate-600">{item.day}</td>
-                          <td className="p-3 text-slate-600">{item.startPeriod}~{item.endPeriod}</td>
+                          <td className="p-3 text-slate-600">{formatSchedules(item.schedules)}</td>
                           <td className="p-3 text-slate-600">{item.room || '-'}</td>
                           <td className="p-3 text-slate-600">{item.capacity}명</td>
                         </tr>
@@ -1006,6 +1123,227 @@ function CourseBulkUploadModal({ seasons, onClose, onSuccess, adminUid }) {
               완료
             </button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QuickAttendanceModal({ course, adminUid, onClose }) {
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [students, setStudents] = useState([]);
+  const [attendanceData, setAttendanceData] = useState({});
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const enrollments = await getEnrollmentsByCourse(course.id);
+        const approvedEnrollments = enrollments.filter(e => e.status === 'approved');
+        
+        const enrichedStudents = await Promise.all(
+          approvedEnrollments.map(async (enrollment) => {
+            const student = await getStudent(enrollment.studentId);
+            return {
+              ...enrollment,
+              student,
+              name: student?.name || enrollment.studentId,
+              class: student?.class || '',
+            };
+          })
+        );
+        
+        enrichedStudents.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+        setStudents(enrichedStudents);
+
+        const existingAttendance = await getAttendanceByDate(course.id, selectedDate);
+        const attendanceMap = {};
+        existingAttendance.forEach(record => {
+          attendanceMap[record.studentId] = { status: record.status, note: record.note || '' };
+        });
+        setAttendanceData(attendanceMap);
+
+        const courseStats = await getAttendanceStats(course.id);
+        setStats(courseStats);
+      } catch (error) {
+        console.error('Failed to load data:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, [course.id, selectedDate]);
+
+  const handleStatusChange = (studentId, status) => {
+    setAttendanceData(prev => ({ ...prev, [studentId]: { ...prev[studentId], status } }));
+  };
+
+  const handleNoteChange = (studentId, note) => {
+    setAttendanceData(prev => ({ ...prev, [studentId]: { ...prev[studentId], note } }));
+  };
+
+  const handleBulkAction = (status) => {
+    const newAttendance = {};
+    students.forEach(student => {
+      newAttendance[student.studentId] = { status, note: attendanceData[student.studentId]?.note || '' };
+    });
+    setAttendanceData(newAttendance);
+  };
+
+  const handleSave = async () => {
+    if (students.length === 0) return;
+    setSaving(true);
+    try {
+      const attendanceList = students
+        .filter(student => attendanceData[student.studentId]?.status)
+        .map(student => ({
+          studentId: student.studentId,
+          status: attendanceData[student.studentId].status,
+          note: attendanceData[student.studentId].note || '',
+        }));
+
+      if (attendanceList.length === 0) {
+        alert('저장할 출석 데이터가 없습니다.');
+        setSaving(false);
+        return;
+      }
+
+      await bulkCheckAttendance(course.id, selectedDate, attendanceList, adminUid);
+      const courseStats = await getAttendanceStats(course.id);
+      setStats(courseStats);
+      alert('출석 정보가 저장되었습니다.');
+    } catch (error) {
+      console.error('Failed to save attendance:', error);
+      alert('저장에 실패했습니다.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleExport = () => {
+    if (students.length === 0) return;
+    const exportData = students.map((student, idx) => ({
+      번호: idx + 1,
+      반: student.class || '-',
+      이름: student.name,
+      날짜: selectedDate,
+      상태: ATTENDANCE_STATUS_CONFIG[attendanceData[student.studentId]?.status]?.label || '-',
+      비고: attendanceData[student.studentId]?.note || '',
+    }));
+    exportAttendanceData(exportData, course.title, selectedDate);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+              <Calendar className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">{course.title}</h2>
+              <p className="text-sm text-slate-500">출석 체크</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="p-4 border-b border-gray-100 bg-slate-50">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">날짜</label>
+                <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)}
+                  className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00b6b2]" />
+              </div>
+              {stats && (
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-green-600">출석 {stats.present}</span>
+                  <span className="text-red-600">결석 {stats.absent}</span>
+                  <span className="text-yellow-600">지각 {stats.late}</span>
+                  <span className="text-blue-600">사유 {stats.excused}</span>
+                  <span className="text-slate-600 font-medium">({stats.rate}%)</span>
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => handleBulkAction(ATTENDANCE_STATUS.PRESENT)} className="px-3 py-1.5 text-xs bg-green-100 text-green-700 rounded-lg hover:bg-green-200">전체 출석</button>
+              <button onClick={() => handleBulkAction(ATTENDANCE_STATUS.ABSENT)} className="px-3 py-1.5 text-xs bg-red-100 text-red-700 rounded-lg hover:bg-red-200">전체 결석</button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {loading ? (
+            <div className="p-12 text-center">
+              <div className="w-8 h-8 border-2 border-[#00b6b2] border-t-transparent rounded-full animate-spin mx-auto mb-2" />
+              <p className="text-slate-500">로딩 중...</p>
+            </div>
+          ) : students.length === 0 ? (
+            <div className="p-12 text-center text-slate-400">수강 확정된 학생이 없습니다.</div>
+          ) : (
+            <table className="w-full">
+              <thead className="bg-slate-50 text-slate-500 text-sm sticky top-0">
+                <tr>
+                  <th className="text-left p-3 font-medium w-12">번호</th>
+                  <th className="text-left p-3 font-medium w-20">반</th>
+                  <th className="text-left p-3 font-medium">이름</th>
+                  <th className="text-center p-3 font-medium">출석 상태</th>
+                  <th className="text-left p-3 font-medium">비고</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {students.map((student, idx) => (
+                  <tr key={student.studentId} className="hover:bg-slate-50/50">
+                    <td className="p-3 text-slate-500 text-sm">{idx + 1}</td>
+                    <td className="p-3 text-slate-500 text-sm">{student.class || '-'}</td>
+                    <td className="p-3 font-medium text-slate-900">{student.name}</td>
+                    <td className="p-3">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => handleStatusChange(student.studentId, ATTENDANCE_STATUS.PRESENT)}
+                          className={`p-1.5 rounded-lg transition-all ${attendanceData[student.studentId]?.status === ATTENDANCE_STATUS.PRESENT ? 'bg-green-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`} title="출석">
+                          <CheckCircle2 className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleStatusChange(student.studentId, ATTENDANCE_STATUS.ABSENT)}
+                          className={`p-1.5 rounded-lg transition-all ${attendanceData[student.studentId]?.status === ATTENDANCE_STATUS.ABSENT ? 'bg-red-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`} title="결석">
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleStatusChange(student.studentId, ATTENDANCE_STATUS.LATE)}
+                          className={`p-1.5 rounded-lg transition-all ${attendanceData[student.studentId]?.status === ATTENDANCE_STATUS.LATE ? 'bg-yellow-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`} title="지각">
+                          <Clock className="w-4 h-4" />
+                        </button>
+                        <button onClick={() => handleStatusChange(student.studentId, ATTENDANCE_STATUS.EXCUSED)}
+                          className={`p-1.5 rounded-lg transition-all ${attendanceData[student.studentId]?.status === ATTENDANCE_STATUS.EXCUSED ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`} title="사유">
+                          <AlertCircle className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                    <td className="p-3">
+                      <input type="text" placeholder="비고..." value={attendanceData[student.studentId]?.note || ''} onChange={(e) => handleNoteChange(student.studentId, e.target.value)}
+                        className="w-full px-2 py-1 text-sm bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00b6b2]" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="p-4 border-t border-gray-100 flex items-center justify-between gap-4">
+          <button onClick={handleExport} disabled={students.length === 0} className="flex items-center gap-2 px-4 py-2 text-sm bg-white border border-gray-200 text-slate-600 rounded-xl hover:bg-slate-50 disabled:opacity-50">
+            <Download className="w-4 h-4" />엑셀 다운로드
+          </button>
+          <div className="flex items-center gap-3">
+            <button onClick={onClose} className="px-4 py-2 text-sm border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50">닫기</button>
+            <button onClick={handleSave} disabled={saving || students.length === 0} className="flex items-center gap-2 px-4 py-2 text-sm bg-[#00b6b2] text-white rounded-xl font-medium hover:bg-[#009da0] disabled:opacity-50">
+              <Save className="w-4 h-4" />{saving ? '저장 중...' : '저장'}
+            </button>
+          </div>
         </div>
       </div>
     </div>

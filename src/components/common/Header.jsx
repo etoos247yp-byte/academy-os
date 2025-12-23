@@ -1,11 +1,17 @@
 import { BookOpen, LogOut, Settings } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import NotificationBell from '../student/NotificationBell';
 
 export function StudentHeader({ student, onLogout }) {
   const navigate = useNavigate();
   const location = useLocation();
   
-  const currentView = location.pathname.includes('schedule') ? 'schedule' : 'courses';
+  const getStudentActiveTab = () => {
+    if (location.pathname.includes('schedule')) return 'schedule';
+    if (location.pathname.includes('attendance')) return 'attendance';
+    return 'courses';
+  };
+  const currentView = getStudentActiveTab();
 
   return (
     <header className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200 no-print">
@@ -44,9 +50,22 @@ export function StudentHeader({ student, onLogout }) {
             >
               내 시간표
             </button>
+            <button 
+              onClick={() => navigate('/student/attendance')}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${
+                currentView === 'attendance' 
+                  ? 'bg-slate-100 text-[#00b6b2]' 
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              출석 현황
+            </button>
           </nav>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            {/* Notification Bell */}
+            <NotificationBell />
+            
             <div className="flex items-center gap-3 pl-2 border-l border-slate-200">
               <div className="text-right hidden sm:block">
                 <div className="text-sm font-semibold text-slate-700">{student?.name}</div>
@@ -74,10 +93,12 @@ export function AdminHeader({ admin, onLogout }) {
   const getActiveTab = () => {
     const path = location.pathname;
     if (path.includes('students')) return 'students';
+    if (path.includes('classes')) return 'classes';
     if (path.includes('courses')) return 'courses';
     if (path.includes('seasons')) return 'seasons';
     if (path.includes('requests')) return 'requests';
     if (path.includes('enrollments')) return 'enrollments';
+    if (path.includes('attendance')) return 'attendance';
     if (path.includes('settings')) return 'settings';
     return 'dashboard';
   };
@@ -88,7 +109,9 @@ export function AdminHeader({ admin, onLogout }) {
     { id: 'dashboard', label: '대시보드', path: '/admin/dashboard' },
     { id: 'requests', label: '신청 관리', path: '/admin/requests' },
     { id: 'students', label: '학생 관리', path: '/admin/students' },
+    { id: 'classes', label: '반 관리', path: '/admin/classes' },
     { id: 'courses', label: '강좌 관리', path: '/admin/courses' },
+    { id: 'attendance', label: '출석 체크', path: '/admin/attendance' },
     { id: 'seasons', label: '학기 관리', path: '/admin/seasons' },
   ];
 

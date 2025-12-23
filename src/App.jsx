@@ -11,6 +11,8 @@ import AdminLogin from './pages/AdminLogin';
 // Student Components
 import EnrollmentPage from './components/student/EnrollmentPage';
 import MySchedulePage from './components/student/MySchedulePage';
+import NotificationsPage from './components/student/NotificationsPage';
+import MyAttendancePage from './components/student/MyAttendancePage';
 
 // Admin Components
 import AdminDashboard from './components/admin/AdminDashboard';
@@ -19,6 +21,9 @@ import CourseManagement from './components/admin/CourseManagement';
 import SeasonManagement from './components/admin/SeasonManagement';
 import EnrollmentRequests from './components/admin/EnrollmentRequests';
 import AdminSettings from './components/admin/AdminSettings';
+import ArchiveViewer from './components/admin/ArchiveViewer';
+import ClassManagement from './components/admin/ClassManagement';
+import AttendancePage from './components/admin/AttendancePage';
 
 // Layout Components
 function StudentLayout({ children }) {
@@ -67,6 +72,26 @@ function App() {
                 <StudentRoute>
                   <StudentLayout>
                     <MySchedulePage />
+                  </StudentLayout>
+                </StudentRoute>
+              }
+            />
+            <Route
+              path="/student/notifications"
+              element={
+                <StudentRoute>
+                  <StudentLayout>
+                    <NotificationsPage />
+                  </StudentLayout>
+                </StudentRoute>
+              }
+            />
+            <Route
+              path="/student/attendance"
+              element={
+                <StudentRoute>
+                  <StudentLayout>
+                    <MyAttendancePage />
                   </StudentLayout>
                 </StudentRoute>
               }
@@ -132,6 +157,36 @@ function App() {
                     <AdminSettings />
                   </AdminLayout>
                 </SuperAdminRoute>
+              }
+            />
+            <Route
+              path="/admin/archive"
+              element={
+                <AdminRoute>
+                  <AdminLayout>
+                    <ArchiveViewer />
+                  </AdminLayout>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/classes"
+              element={
+                <AdminRoute>
+                  <AdminLayout>
+                    <ClassManagement />
+                  </AdminLayout>
+                </AdminRoute>
+              }
+            />
+            <Route
+              path="/admin/attendance"
+              element={
+                <AdminRoute>
+                  <AdminLayout>
+                    <AttendancePage />
+                  </AdminLayout>
+                </AdminRoute>
               }
             />
 
