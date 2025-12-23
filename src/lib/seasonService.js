@@ -18,10 +18,21 @@ import { db } from './firebase';
  * Create a new season
  */
 export const createSeason = async (seasonData, adminUid) => {
+  // 정정기간: 학기 시작일부터 7일
+  const changePeriodDays = seasonData.changePeriodDays ?? 7;
+  let changePeriodEnd = null;
+  
+  if (seasonData.startDate) {
+    changePeriodEnd = new Date(seasonData.startDate);
+    changePeriodEnd.setDate(changePeriodEnd.getDate() + changePeriodDays);
+  }
+  
   const docRef = await addDoc(collection(db, 'seasons'), {
     name: seasonData.name,
     startDate: seasonData.startDate,
     endDate: seasonData.endDate,
+    changePeriodDays: changePeriodDays,
+    changePeriodEnd: changePeriodEnd,
     isActive: seasonData.isActive ?? true,
     isArchived: false,
     archivedAt: null,

@@ -323,10 +323,20 @@ function AddSeasonModal({ onClose, onSuccess, adminUid }) {
     name: '',
     startDate: '',
     endDate: '',
+    changePeriodDays: 7,
     isActive: true,
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  // 정정기간 종료일 계산
+  const changePeriodEndDate = formData.startDate 
+    ? (() => {
+        const end = new Date(formData.startDate);
+        end.setDate(end.getDate() + formData.changePeriodDays);
+        return end.toLocaleDateString('ko-KR');
+      })()
+    : null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -343,6 +353,7 @@ function AddSeasonModal({ onClose, onSuccess, adminUid }) {
         name: formData.name,
         startDate: formData.startDate ? new Date(formData.startDate) : null,
         endDate: formData.endDate ? new Date(formData.endDate) : null,
+        changePeriodDays: formData.changePeriodDays,
         isActive: formData.isActive,
       }, adminUid);
       onSuccess();
@@ -378,7 +389,7 @@ function AddSeasonModal({ onClose, onSuccess, adminUid }) {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">시작일</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">시작일 (개강일)</label>
               <input
                 type="date"
                 value={formData.startDate}
@@ -395,6 +406,28 @@ function AddSeasonModal({ onClose, onSuccess, adminUid }) {
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">정정기간 (개강일 기준)</label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={formData.changePeriodDays}
+                onChange={(e) => setFormData({ ...formData, changePeriodDays: parseInt(e.target.value) || 7 })}
+                className="w-20 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
+              />
+              <span className="text-sm text-slate-600">일</span>
+              {changePeriodEndDate && (
+                <span className="text-sm text-slate-500 ml-2">
+                  (~ {changePeriodEndDate}까지)
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              개강일부터 정정기간 동안 학생들이 수강신청을 취소할 수 있습니다.
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <input

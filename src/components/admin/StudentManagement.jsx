@@ -17,9 +17,7 @@ import { getCourse } from '../../lib/courseService';
 import { 
   getActiveClasses, 
   batchAssignStudentsToClass, 
-  batchRemoveStudentsFromClass,
-  autoAssignStudents,
-  executeAutoAssignment
+  batchRemoveStudentsFromClass
 } from '../../lib/classService';
 import { useAuth } from '../../contexts/AuthContext';
 import { formatDate, formatDateTime } from '../../lib/utils';
@@ -41,7 +39,6 @@ export default function StudentManagement() {
   const [showBulkUploadModal, setShowBulkUploadModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(null);
   const [showScheduleModal, setShowScheduleModal] = useState(null);
-  const [showAutoAssignModal, setShowAutoAssignModal] = useState(false);
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   const [showBulkAutoAssignModal, setShowBulkAutoAssignModal] = useState(false);
   
@@ -357,14 +354,6 @@ export default function StudentManagement() {
           <div className="flex-1" />
           
           <button
-            onClick={() => setShowAutoAssignModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-purple-100 text-purple-700 rounded-xl font-medium hover:bg-purple-200 transition-colors"
-          >
-            <Wand2 className="w-4 h-4" />
-            자동 배정
-          </button>
-          
-          <button
             onClick={() => handleBatchToggle(true)}
             className="px-4 py-2 bg-green-100 text-green-700 rounded-xl font-medium hover:bg-green-200 transition-colors"
           >
@@ -574,19 +563,6 @@ export default function StudentManagement() {
         <StudentScheduleModal
           student={showScheduleModal}
           onClose={() => setShowScheduleModal(null)}
-        />
-      )}
-
-      {/* Auto Assign Modal */}
-      {showAutoAssignModal && (
-        <AutoAssignModal
-          students={classFilter === 'unassigned' ? filteredStudents : students.filter(s => !s.class)}
-          classes={classes}
-          onClose={() => setShowAutoAssignModal(false)}
-          onSuccess={() => {
-            setShowAutoAssignModal(false);
-            loadData();
-          }}
         />
       )}
 
@@ -849,193 +825,6 @@ function EditStudentModal({ student, classes, onClose, onSuccess }) {
             </button>
           </div>
         </form>
-      </div>
-    </div>
-  );
-}
-
-function AutoAssignModal({ students, classes, onClose, onSuccess }) {
-  const [method, setMethod] = useState('balance');
-  const [preview, setPreview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const methodDescriptions = {
-    alphabetical: '학생 이름을 가나다순으로 정렬하여 반에 균등 배분합니다.',
-    balance: '각 반의 학생 수가 균등해지도록 배분합니다.',
-    category: '학생이 가장 많이 수강한 과목 카테고리를 기준으로 배정합니다. (예: 수학반, 영어반 등)',
-  };
-
-  const handlePreview = async () => {
-    if (classes.length === 0) {
-      setError('배정할 반이 없습니다. 먼저 반을 등록해주세요.');
-      return;
-    }
-
-    setLoading(true);
-    setError('');
-
-    try {
-      const result = await autoAssignStudents(method, students, classes);
-      setPreview(result);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleExecute = async () => {
-    if (!preview) return;
-
-    setLoading(true);
-    try {
-      await executeAutoAssignment(preview);
-      onSuccess();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Group preview by class
-  const previewByClass = preview?.reduce((acc, item) => {
-    if (!acc[item.className]) {
-      acc[item.className] = [];
-    }
-    acc[item.className].push(item);
-    return acc;
-  }, {});
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
-              <Wand2 className="w-5 h-5 text-purple-600" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900">자동 반 배정</h2>
-              <p className="text-sm text-slate-500">
-                미배정 학생 {students.length}명
-              </p>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-6">
-          {!preview ? (
-            <div className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-3">배정 방식</label>
-                <div className="space-y-3">
-                  {[
-                    { value: 'balance', label: '균등 배분' },
-                    { value: 'alphabetical', label: '가나다순' },
-                    { value: 'category', label: '수강 과목 기준' },
-                  ].map(opt => (
-                    <label
-                      key={opt.value}
-                      className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition-colors ${
-                        method === opt.value 
-                          ? 'border-[#00b6b2] bg-[#00b6b2]/5' 
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="method"
-                        value={opt.value}
-                        checked={method === opt.value}
-                        onChange={(e) => setMethod(e.target.value)}
-                        className="mt-1"
-                      />
-                      <div>
-                        <div className="font-medium text-slate-900">{opt.label}</div>
-                        <div className="text-sm text-slate-500">{methodDescriptions[opt.value]}</div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {error && (
-                <div className="text-red-500 text-sm bg-red-50 p-4 rounded-xl flex items-start gap-2">
-                  <AlertTriangle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                <div className="font-medium text-green-800">미리보기 결과</div>
-                <div className="text-sm text-green-600">{preview.length}명이 {Object.keys(previewByClass).length}개 반에 배정됩니다.</div>
-              </div>
-
-              {Object.entries(previewByClass).map(([className, items]) => (
-                <div key={className} className="border border-gray-200 rounded-xl overflow-hidden">
-                  <div className="bg-slate-50 px-4 py-2 font-medium text-slate-700 flex items-center justify-between">
-                    <span>{className}</span>
-                    <span className="text-sm text-slate-500">{items.length}명</span>
-                  </div>
-                  <div className="p-4 flex flex-wrap gap-2">
-                    {items.map(item => (
-                      <span 
-                        key={item.studentId} 
-                        className="inline-flex px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg text-sm"
-                      >
-                        {item.studentName}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div className="p-6 border-t border-gray-100 flex gap-3">
-          {!preview ? (
-            <>
-              <button
-                onClick={onClose}
-                className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50"
-              >
-                취소
-              </button>
-              <button
-                onClick={handlePreview}
-                disabled={loading || students.length === 0}
-                className="flex-1 py-2.5 bg-[#00b6b2] text-white rounded-xl font-medium hover:bg-[#009da0] disabled:opacity-50"
-              >
-                {loading ? '계산 중...' : '미리보기'}
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => setPreview(null)}
-                className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50"
-              >
-                다시 설정
-              </button>
-              <button
-                onClick={handleExecute}
-                disabled={loading}
-                className="flex-1 py-2.5 bg-[#00b6b2] text-white rounded-xl font-medium hover:bg-[#009da0] disabled:opacity-50"
-              >
-                {loading ? '배정 중...' : '배정 실행'}
-              </button>
-            </>
-          )}
-        </div>
       </div>
     </div>
   );

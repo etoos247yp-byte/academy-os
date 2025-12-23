@@ -333,13 +333,13 @@ function ClassFormModal({ classData, seasons, onClose, onSuccess, adminUid }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">시즌 (선택)</label>
+              <label className="block text-sm font-medium text-slate-700 mb-1">학기</label>
               <select
                 value={formData.seasonId}
                 onChange={(e) => setFormData({ ...formData, seasonId: e.target.value })}
                 className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
               >
-                <option value="">시즌 없음</option>
+                <option value="">학기 선택</option>
                 {seasons.map(season => (
                   <option key={season.id} value={season.id}>{season.name}</option>
                 ))}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Users, BookOpen, Clock, CheckCircle, Calendar, ArrowRight, BarChart3 } from 'lucide-react';
+import { Users, BookOpen, Clock, CheckCircle, Calendar, ArrowRight, BarChart3, TrendingDown, User, X } from 'lucide-react';
 import { getAllStudents } from '../../lib/studentService';
 import { getAllCourses } from '../../lib/courseService';
 import { subscribeToPendingEnrollments, getAllEnrollments } from '../../lib/enrollmentService';
@@ -40,6 +40,8 @@ const STATUS_COLORS = {
   rejected: '#ef4444',
   cancelled: '#6b7280',
 };
+
+const INSTRUCTOR_COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#84cc16'];
 
 // Helper function to aggregate enrollment data by course
 const aggregateCourseEnrollments = (courses, enrollments) => {
@@ -138,22 +140,95 @@ const aggregateDailyTrend = (enrollments, days = 14) => {
   return trend;
 };
 
-// Helper function to aggregate students by class
-const aggregateClassDistribution = (students) => {
-  const classCount = {};
+// Helper function to aggregate instructor data
+const aggregateInstructorData = (courses) => {
+  const instructorMap = {};
   
-  students.forEach(s => {
-    const className = s.class || s.className || '미배정';
-    classCount[className] = (classCount[className] || 0) + 1;
+  courses.forEach(course => {
+    const instructor = course.instructor || '미지정';
+    if (!instructorMap[instructor]) {
+      instructorMap[instructor] = {
+        name: instructor,
+        courseCount: 0,
+        totalEnrolled: 0,
+        totalCapacity: 0,
+        courses: [],
+      };
+    }
+    instructorMap[instructor].courseCount++;
+    instructorMap[instructor].totalEnrolled += course.enrolled || 0;
+    instructorMap[instructor].totalCapacity += course.capacity || 0;
+    instructorMap[instructor].courses.push(course);
   });
   
-  return Object.entries(classCount)
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([name, count], index) => ({
-      name,
-      학생수: count,
-      fill: Object.values(CHART_COLORS)[index % Object.values(CHART_COLORS).length],
+  return Object.values(instructorMap)
+    .sort((a, b) => b.totalEnrolled - a.totalEnrolled)
+    .map((data, index) => ({
+      ...data,
+      fill: INSTRUCTOR_COLORS[index % INSTRUCTOR_COLORS.length],
     }));
+};
+
+// Helper function to calculate cancellation rate
+const calculateCancellationStats = (enrollments, seasons) => {
+  // 현재 활성 시즌 찾기
+  const activeSeason = seasons.find(s => s.isActive);
+  const changePeriodDays = activeSeason?.changePeriodDays || 7;
+  
+  // 지난 30일간의 데이터만 분석
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  const recentEnrollments = enrollments.filter(e => {
+    const enrolledAt = e.enrolledAt?.toDate?.() || 
+      (e.enrolledAt?.seconds ? new Date(e.enrolledAt.seconds * 1000) : null);
+    if (!enrolledAt) return false;
+    return enrolledAt >= thirtyDaysAgo;
+  });
+  
+  const totalEnrollments = recentEnrollments.filter(e => 
+    e.status === 'approved' || e.status === 'cancelled'
+  ).length;
+  
+  const cancelledWithinPeriod = recentEnrollments.filter(e => {
+    if (e.status !== 'cancelled') return false;
+    
+    const enrolledAt = e.enrolledAt?.toDate?.() || 
+      (e.enrolledAt?.seconds ? new Date(e.enrolledAt.seconds * 1000) : null);
+    const cancelledAt = e.cancelledAt?.toDate?.() || 
+      (e.cancelledAt?.seconds ? new Date(e.cancelledAt.seconds * 1000) : null);
+    
+    if (!enrolledAt || !cancelledAt) return false;
+    
+    const daysDiff = (cancelledAt - enrolledAt) / (1000 * 60 * 60 * 24);
+    return daysDiff <= changePeriodDays;
+  }).length;
+  
+  return {
+    total: totalEnrollments,
+    cancelled: cancelledWithinPeriod,
+    rate: totalEnrollments > 0 ? ((cancelledWithinPeriod / totalEnrollments) * 100).toFixed(1) : '0',
+    periodDays: changePeriodDays,
+  };
+};
+
+// Helper function to calculate enrollment stats
+const calculateEnrollmentStats = (courses) => {
+  const activeCourses = courses.filter(c => c.isActive);
+  const totalEnrolled = activeCourses.reduce((sum, c) => sum + (c.enrolled || 0), 0);
+  const totalCapacity = activeCourses.reduce((sum, c) => sum + (c.capacity || 0), 0);
+  const avgEnrolled = activeCourses.length > 0 
+    ? (totalEnrolled / activeCourses.length).toFixed(1) 
+    : '0';
+  
+  return {
+    totalEnrolled,
+    totalCapacity,
+    avgEnrolled,
+    courseCount: activeCourses.length,
+    fillRate: totalCapacity > 0 ? ((totalEnrolled / totalCapacity) * 100).toFixed(1) : '0',
+  };
 };
 
 export default function AdminDashboard() {
@@ -171,7 +246,9 @@ export default function AdminDashboard() {
     students: [],
     courses: [],
     enrollments: [],
+    seasons: [],
   });
+  const [selectedInstructor, setSelectedInstructor] = useState(null);
 
   useEffect(() => {
     const loadStats = async () => {
@@ -198,6 +275,7 @@ export default function AdminDashboard() {
           students,
           courses,
           enrollments: allEnrollments,
+          seasons,
         });
       } catch (error) {
         console.error('Failed to load stats:', error);
@@ -238,9 +316,19 @@ export default function AdminDashboard() {
     [rawData.enrollments]
   );
 
-  const classDistributionData = useMemo(
-    () => aggregateClassDistribution(rawData.students),
-    [rawData.students]
+  const instructorData = useMemo(
+    () => aggregateInstructorData(rawData.courses),
+    [rawData.courses]
+  );
+
+  const cancellationStats = useMemo(
+    () => calculateCancellationStats(rawData.enrollments, rawData.seasons),
+    [rawData.enrollments, rawData.seasons]
+  );
+
+  const enrollmentStats = useMemo(
+    () => calculateEnrollmentStats(rawData.courses),
+    [rawData.courses]
   );
 
   if (loading) {
@@ -306,6 +394,54 @@ export default function AdminDashboard() {
             <div className="text-sm text-slate-500">{stat.label}</div>
           </div>
         ))}
+      </div>
+
+      {/* Key Metrics Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center">
+              <Users className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">총 수강 인원</div>
+              <div className="text-2xl font-bold text-slate-900">{enrollmentStats.totalEnrolled}명</div>
+            </div>
+          </div>
+          <div className="text-sm text-slate-400">
+            전체 정원 {enrollmentStats.totalCapacity}명 중 {enrollmentStats.fillRate}% 충원
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-green-100 flex items-center justify-center">
+              <BarChart3 className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">평균 수강 인원</div>
+              <div className="text-2xl font-bold text-slate-900">{enrollmentStats.avgEnrolled}명</div>
+            </div>
+          </div>
+          <div className="text-sm text-slate-400">
+            강좌당 평균 ({enrollmentStats.courseCount}개 강좌 기준)
+          </div>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-gray-200 p-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center">
+              <TrendingDown className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <div className="text-sm text-slate-500">정정기간 내 취소율</div>
+              <div className="text-2xl font-bold text-slate-900">{cancellationStats.rate}%</div>
+            </div>
+          </div>
+          <div className="text-sm text-slate-400">
+            최근 30일 기준 ({cancellationStats.periodDays}일 이내 취소 {cancellationStats.cancelled}건)
+          </div>
+        </div>
       </div>
 
       {/* Pending Requests Preview */}
@@ -420,6 +556,54 @@ export default function AdminDashboard() {
             </ChartCard>
           )}
 
+          {/* Instructor Data Bar Chart */}
+          {instructorData.length > 0 && (
+            <ChartCard title="강사별 수강 현황">
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart
+                  data={instructorData}
+                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} />
+                  <Tooltip 
+                    content={({ active, payload }) => {
+                      if (active && payload && payload.length) {
+                        const data = payload[0].payload;
+                        return (
+                          <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
+                            <p className="font-medium text-slate-900">{data.name}</p>
+                            <p className="text-sm text-slate-600">강좌 수: {data.courseCount}개</p>
+                            <p className="text-sm text-slate-600">수강 인원: {data.totalEnrolled}명</p>
+                            <p className="text-sm text-slate-500">전체 정원: {data.totalCapacity}명</p>
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                  />
+                  <Legend />
+                  <Bar 
+                    dataKey="totalEnrolled" 
+                    name="수강 인원" 
+                    fill="#00b6b2" 
+                    radius={[4, 4, 0, 0]}
+                    onClick={(data) => setSelectedInstructor(data)}
+                    className="cursor-pointer"
+                  >
+                    {instructorData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+              <p className="text-xs text-slate-400 text-center mt-2">
+                막대를 클릭하면 해당 강사의 강좌 목록을 볼 수 있습니다.
+              </p>
+            </ChartCard>
+          )}
+
           {/* Daily Enrollment Trend Line Chart */}
           {dailyTrendData.length > 0 && (
             <ChartCard title="일별 신청 추이 (최근 14일)">
@@ -475,33 +659,6 @@ export default function AdminDashboard() {
               </ResponsiveContainer>
             </ChartCard>
           )}
-
-          {/* Class Distribution Bar Chart */}
-          {classDistributionData.length > 0 && (
-            <ChartCard title="반별 학생 현황">
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart
-                  data={classDistributionData}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis allowDecimals={false} />
-                  <Tooltip />
-                  <Legend />
-                  <Bar 
-                    dataKey="학생수" 
-                    fill="#00b6b2" 
-                    radius={[4, 4, 0, 0]}
-                  >
-                    {classDistributionData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </ChartCard>
-          )}
         </div>
       </div>
 
@@ -523,6 +680,14 @@ export default function AdminDashboard() {
           onClick={() => navigate('/admin/seasons')}
         />
       </div>
+
+      {/* Instructor Courses Modal */}
+      {selectedInstructor && (
+        <InstructorCoursesModal
+          instructor={selectedInstructor}
+          onClose={() => setSelectedInstructor(null)}
+        />
+      )}
     </div>
   );
 }
@@ -547,6 +712,93 @@ function ChartCard({ title, children }) {
     <div className="bg-white rounded-2xl border border-gray-200 p-6">
       <h3 className="font-bold text-slate-900 mb-4">{title}</h3>
       {children}
+    </div>
+  );
+}
+
+function InstructorCoursesModal({ instructor, onClose }) {
+  const navigate = useNavigate();
+  
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col">
+        <div className="p-6 border-b border-gray-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: instructor.fill + '20' }}>
+              <User className="w-5 h-5" style={{ color: instructor.fill }} />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold text-slate-900">{instructor.name} 강사</h2>
+              <p className="text-sm text-slate-500">
+                {instructor.courseCount}개 강좌 | 수강생 {instructor.totalEnrolled}명
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="space-y-3">
+            {instructor.courses.map((course) => (
+              <div
+                key={course.id}
+                className="bg-slate-50 rounded-xl p-4 hover:bg-slate-100 transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-medium text-slate-900">{course.title}</h4>
+                    <div className="flex items-center gap-3 mt-1 text-sm text-slate-500">
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${CATEGORY_COLORS[course.category]?.bg || 'bg-slate-100'} ${CATEGORY_COLORS[course.category]?.text || 'text-slate-600'}`}>
+                        {course.category}
+                      </span>
+                      <span>{course.day} {course.startPeriod}~{course.endPeriod}교시</span>
+                      {course.room && <span>{course.room}</span>}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-slate-900">
+                      {course.enrolled}/{course.capacity}
+                    </div>
+                    <div className="text-xs text-slate-500">수강/정원</div>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="w-full bg-slate-200 rounded-full h-2">
+                    <div 
+                      className="h-2 rounded-full transition-all"
+                      style={{ 
+                        width: `${Math.min(100, (course.enrolled / course.capacity) * 100)}%`,
+                        backgroundColor: instructor.fill 
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="p-6 border-t border-gray-100 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50"
+          >
+            닫기
+          </button>
+          <button
+            onClick={() => {
+              onClose();
+              navigate('/admin/courses');
+            }}
+            className="flex-1 py-2.5 bg-[#00b6b2] text-white rounded-xl font-medium hover:bg-[#009da0]"
+          >
+            강좌 관리로 이동
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
