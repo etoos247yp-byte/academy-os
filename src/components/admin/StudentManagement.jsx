@@ -9,6 +9,7 @@ import {
   setEnrollmentStatus,
   setChangePeriod,
   batchSetEnrollmentStatus,
+  batchSetChangePeriod,
   batchCreateStudents,
   checkBatchDuplicates
 } from '../../lib/studentService';
@@ -41,6 +42,7 @@ export default function StudentManagement() {
   const [showScheduleModal, setShowScheduleModal] = useState(null);
   const [showBulkAssignModal, setShowBulkAssignModal] = useState(false);
   const [showBulkAutoAssignModal, setShowBulkAutoAssignModal] = useState(false);
+  const [showBulkChangePeriodModal, setShowBulkChangePeriodModal] = useState(false);
   
   // Bulk selection
   const [selectedStudents, setSelectedStudents] = useState(new Set());
@@ -186,7 +188,7 @@ export default function StudentManagement() {
     const columns = [
       { key: 'name', header: '이름' },
       { key: 'class', header: '반' },
-      { key: 'phone', header: '전화번호 뒷자리' },
+      { key: 'phone', header: '보호자번호 뒷자리' },
       { key: 'birthDate', header: '생년월일' },
       { key: 'enrollmentStatus', header: '수강신청 상태' },
     ];
@@ -265,7 +267,7 @@ export default function StudentManagement() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
             <input
               type="text"
-              placeholder="이름 또는 전화번호로 검색..."
+              placeholder="이름 또는 보호자번호로 검색..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
@@ -365,6 +367,13 @@ export default function StudentManagement() {
           >
             수강신청 닫기
           </button>
+          <button
+            onClick={() => setShowBulkChangePeriodModal(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-amber-100 text-amber-700 rounded-xl font-medium hover:bg-amber-200 transition-colors"
+          >
+            <Calendar className="w-4 h-4" />
+            변경기간 설정
+          </button>
         </div>
       </div>
 
@@ -386,7 +395,7 @@ export default function StudentManagement() {
               )}
               <th className="text-left p-4 font-medium">반</th>
               <th className="text-left p-4 font-medium">이름</th>
-              <th className="text-left p-4 font-medium">전화번호 뒷자리</th>
+              <th className="text-left p-4 font-medium">보호자번호 뒷자리</th>
               <th className="text-left p-4 font-medium">생년월일</th>
               <th className="text-left p-4 font-medium">수강신청</th>
               <th className="text-left p-4 font-medium">변경기간</th>
@@ -524,6 +533,24 @@ export default function StudentManagement() {
         />
       )}
 
+      {/* Bulk Change Period Modal */}
+      {showBulkChangePeriodModal && (
+        <BulkChangePeriodModal
+          targetIds={selectMode && selectedStudents.size > 0 
+            ? Array.from(selectedStudents) 
+            : filteredStudents.map(s => s.id)}
+          targetCount={selectMode && selectedStudents.size > 0 
+            ? selectedStudents.size 
+            : filteredStudents.length}
+          onClose={() => setShowBulkChangePeriodModal(false)}
+          onSuccess={() => {
+            setShowBulkChangePeriodModal(false);
+            loadData();
+            setSelectedStudents(new Set());
+          }}
+        />
+      )}
+
       {/* Bulk Upload Modal */}
       {showBulkUploadModal && (
         <BulkUploadModal
@@ -618,7 +645,7 @@ function AddStudentModal({ classes, onClose, onSuccess, adminUid }) {
       return;
     }
     if (formData.phone.length !== 4) {
-      setError('전화번호 뒷자리 4자리를 입력해주세요.');
+      setError('보호자 전화번호 뒷자리 4자리를 입력해주세요.');
       return;
     }
 
@@ -657,7 +684,7 @@ function AddStudentModal({ classes, onClose, onSuccess, adminUid }) {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">전화번호 뒷자리</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">대표보호자 번호 뒷자리</label>
             <input
               type="text"
               maxLength={4}
@@ -770,14 +797,14 @@ function EditStudentModal({ student, classes, onClose, onSuccess }) {
             <p className="text-xs text-slate-400 mt-1">이름은 수정할 수 없습니다</p>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">전화번호 뒷자리</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">대표보호자 번호 뒷자리</label>
             <input
               type="text"
               value={formData.phone}
               disabled
               className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 cursor-not-allowed"
             />
-            <p className="text-xs text-slate-400 mt-1">전화번호는 수정할 수 없습니다</p>
+            <p className="text-xs text-slate-400 mt-1">보호자 번호는 수정할 수 없습니다</p>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -1409,6 +1436,177 @@ function ChangePeriodModal({ student, onClose, onSuccess }) {
   );
 }
 
+function BulkChangePeriodModal({ targetIds, targetCount, onClose, onSuccess }) {
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [clearPeriod, setClearPeriod] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    if (!clearPeriod && !startDate && !endDate) {
+      alert('시작일 또는 종료일을 입력하거나, 초기화를 선택해주세요.');
+      return;
+    }
+
+    if (!confirm(`${targetCount}명의 학생에게 변경기간을 ${clearPeriod ? '초기화' : '설정'}하시겠습니까?`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await batchSetChangePeriod(
+        targetIds,
+        clearPeriod ? null : (startDate ? new Date(startDate) : null),
+        clearPeriod ? null : (endDate ? new Date(endDate) : null)
+      );
+      onSuccess();
+    } catch (error) {
+      console.error('Failed to set change period:', error);
+      alert('설정에 실패했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-xl font-bold text-slate-900">변경기간 일괄 설정</h2>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <p className="text-sm text-amber-800">
+            <strong>{targetCount}명</strong>의 학생에게 적용됩니다.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="clearPeriod"
+              checked={clearPeriod}
+              onChange={(e) => setClearPeriod(e.target.checked)}
+              className="w-4 h-4 text-[#00b6b2] rounded"
+            />
+            <label htmlFor="clearPeriod" className="text-sm text-slate-700">
+              변경기간 초기화 (날짜 삭제)
+            </label>
+          </div>
+
+          {!clearPeriod && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">시작일</label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">종료일</label>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#00b6b2]"
+                />
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50"
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2.5 bg-[#00b6b2] text-white rounded-xl font-medium hover:bg-[#009da0] disabled:opacity-50"
+            >
+              {loading ? '처리 중...' : (clearPeriod ? '초기화' : '설정')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// 전화번호에서 뒷 4자리 추출 (전체 번호 입력 지원)
+const normalizePhone = (phoneInput) => {
+  // 입력값을 문자열로 변환
+  let phoneStr = String(phoneInput || '').trim();
+  
+  // 엑셀에서 숫자로 읽힌 경우 (예: 1012345678 - 앞의 0이 사라진 경우)
+  // 10자리 숫자이고 10으로 시작하면 앞에 0 추가
+  if (/^\d{10}$/.test(phoneStr) && phoneStr.startsWith('10')) {
+    phoneStr = '0' + phoneStr;
+  }
+  
+  // 모든 비숫자 문자 제거
+  const digitsOnly = phoneStr.replace(/\D/g, '');
+  
+  // 4자리 이하면 그대로 반환
+  if (digitsOnly.length <= 4) return digitsOnly;
+  
+  // 그 외에는 뒤에서 4자리 추출
+  return digitsOnly.slice(-4);
+};
+
+// 생년월일 형식 정규화 (08.09.13 → 2008-09-13)
+const normalizeBirthDate = (dateInput) => {
+  const str = String(dateInput || '').trim();
+  if (!str) return '';
+  
+  // 이미 YYYY-MM-DD 형식이면 그대로
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  
+  // 숫자와 구분자 분리
+  const parts = str.split(/[.\-\/]/).filter(Boolean);
+  
+  let year, month, day;
+  
+  if (parts.length === 3) {
+    // YY.MM.DD 또는 YYYY.MM.DD
+    [year, month, day] = parts;
+  } else if (parts.length === 1 && /^\d{6,8}$/.test(str)) {
+    // YYMMDD 또는 YYYYMMDD
+    if (str.length === 6) {
+      year = str.slice(0, 2);
+      month = str.slice(2, 4);
+      day = str.slice(4, 6);
+    } else {
+      year = str.slice(0, 4);
+      month = str.slice(4, 6);
+      day = str.slice(6, 8);
+    }
+  } else {
+    return str; // 알 수 없는 형식은 그대로 반환
+  }
+  
+  // 2자리 연도를 4자리로 변환 (00~30 → 2000~2030, 31~99 → 1931~1999)
+  if (year.length === 2) {
+    const yearNum = parseInt(year);
+    year = yearNum <= 30 ? `20${year.padStart(2, '0')}` : `19${year}`;
+  }
+  
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+};
+
 function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
   const [step, setStep] = useState('upload'); // upload, preview, result
   const [file, setFile] = useState(null);
@@ -1418,11 +1616,10 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null);
   const [error, setError] = useState('');
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleFileChange = async (e) => {
-    const selectedFile = e.target.files[0];
-    if (!selectedFile) return;
-
+  // 파일 처리 공통 로직
+  const processFile = async (selectedFile) => {
     setFile(selectedFile);
     setError('');
     setLoading(true);
@@ -1430,12 +1627,12 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
     try {
       const data = await parseExcelFile(selectedFile);
       
-      // 데이터 정규화
+      // 데이터 정규화 (전화번호 자동 추출, 생년월일 형식 변환)
       const normalized = data.map(row => ({
         name: String(row['이름'] || row['name'] || '').trim(),
         class: String(row['반'] || row['class'] || '').trim(),
-        phone: String(row['전화번호뒷자리'] || row['전화번호 뒷자리'] || row['phone'] || '').trim(),
-        birthDate: String(row['생년월일'] || row['birthDate'] || '').trim(),
+        phone: normalizePhone(row['대표보호자번호'] || row['대표보호자 번호'] || row['보호자번호'] || row['전화번호'] || row['전화번호뒷자리'] || row['전화번호 뒷자리'] || row['phone'] || ''),
+        birthDate: normalizeBirthDate(row['생년월일'] || row['birthDate'] || ''),
       })).filter(row => row.name && row.phone);
 
       if (normalized.length === 0) {
@@ -1447,7 +1644,7 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
       // 전화번호 4자리 검증
       const invalidPhone = normalized.find(row => row.phone.length !== 4 || !/^\d{4}$/.test(row.phone));
       if (invalidPhone) {
-        setError(`전화번호 뒷자리는 4자리 숫자여야 합니다. (오류: ${invalidPhone.name})`);
+        setError(`보호자 전화번호에서 4자리를 추출할 수 없습니다. (오류: ${invalidPhone.name}, 값: ${invalidPhone.phone})`);
         setLoading(false);
         return;
       }
@@ -1475,13 +1672,57 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
     }
   };
 
+  const handleFileChange = async (e) => {
+    const selectedFile = e.target.files[0];
+    if (!selectedFile) return;
+    processFile(selectedFile);
+  };
+
+  // 드래그 앤 드롭 이벤트 핸들러
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files.length > 0) {
+      const droppedFile = files[0];
+      const fileName = droppedFile.name.toLowerCase();
+      if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        processFile(droppedFile);
+      } else {
+        setError('엑셀 파일(.xlsx, .xls)만 업로드 가능합니다.');
+      }
+    }
+  };
+
+  // 기존 handleFileChange의 중복 코드 제거 (이미 processFile로 이동됨)
+  // 아래는 기존 코드에서 제거할 부분의 시작점
+
   const handleDownloadTemplate = () => {
     const classNames = classes.map(c => c.name).join(', ') || 'A반, B반, C반';
     const columns = [
       { header: '이름', example: '홍길동' },
       { header: '반', example: classNames.split(', ')[0] || 'A반' },
-      { header: '전화번호뒷자리', example: '1234' },
-      { header: '생년월일', example: '2005-03-15' },
+      { header: '대표보호자번호', example: '010-1234-5678' },
+      { header: '생년월일', example: '08.09.13' },
     ];
     downloadTemplate(columns, '학생등록');
   };
@@ -1506,8 +1747,17 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
   const handleSubmit = async () => {
     setLoading(true);
     try {
-      const results = await batchCreateStudents(parsedData, adminUid, duplicateActions);
-      setResults(results);
+      const rawResults = await batchCreateStudents(parsedData, adminUid, duplicateActions);
+      
+      // Aggregate results for display
+      const aggregated = {
+        created: rawResults.filter(r => r.success && r.created).length,
+        updated: rawResults.filter(r => r.success && r.overwritten).length,
+        skipped: rawResults.filter(r => r.skipped).length,
+        errors: rawResults.filter(r => !r.success && !r.skipped).map(r => `${r.name}: ${r.error}`)
+      };
+      
+      setResults(aggregated);
       setStep('result');
     } catch (err) {
       setError(err.message);
@@ -1546,12 +1796,17 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
           {step === 'upload' && (
             <div className="space-y-6">
               <div 
-                className="border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-[#00b6b2] transition-colors cursor-pointer"
+                className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors cursor-pointer
+                  ${isDragging ? 'border-[#00b6b2] bg-[#00b6b2]/5' : 'border-slate-200 hover:border-[#00b6b2]'}`}
                 onClick={() => document.getElementById('excel-file-input').click()}
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
               >
-                <Upload className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                <Upload className={`w-12 h-12 mx-auto mb-4 ${isDragging ? 'text-[#00b6b2]' : 'text-slate-300'}`} />
                 <p className="text-slate-600 font-medium mb-2">
-                  클릭하거나 파일을 드래그하여 업로드
+                  {isDragging ? '파일을 놓아주세요' : '클릭하거나 파일을 드래그하여 업로드'}
                 </p>
                 <p className="text-sm text-slate-400">
                   .xlsx, .xls 파일 지원
@@ -1599,10 +1854,12 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
                   <div className="text-2xl font-bold text-green-700">{newCount}</div>
                   <div className="text-sm text-green-600">신규 등록</div>
                 </div>
-                <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
-                  <div className="text-2xl font-bold text-yellow-700">{duplicateCount}</div>
-                  <div className="text-sm text-yellow-600">중복</div>
-                </div>
+                {duplicateCount > 0 && (
+                  <div className="flex-1 bg-yellow-50 border border-yellow-200 rounded-xl p-4 text-center">
+                    <div className="text-2xl font-bold text-yellow-700">{duplicateCount}</div>
+                    <div className="text-sm text-yellow-600">중복 발견</div>
+                  </div>
+                )}
               </div>
 
               {/* Duplicate handling */}
@@ -1610,22 +1867,20 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
                 <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <AlertTriangle className="w-5 h-5 text-yellow-600" />
-                    <span className="font-medium text-yellow-800">
-                      {duplicateCount}명의 중복 학생이 있습니다
-                    </span>
+                    <span className="font-medium text-yellow-800">중복 데이터 처리</span>
                   </div>
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleSetAllDuplicates('skip')}
                       className="px-3 py-1.5 text-sm bg-white border border-yellow-300 text-yellow-700 rounded-lg hover:bg-yellow-100"
                     >
-                      전체 건너뛰기
+                      모두 건너뛰기
                     </button>
                     <button
-                      onClick={() => handleSetAllDuplicates('overwrite')}
+                      onClick={() => handleSetAllDuplicates('update')}
                       className="px-3 py-1.5 text-sm bg-white border border-yellow-300 text-yellow-700 rounded-lg hover:bg-yellow-100"
                     >
-                      전체 덮어쓰기
+                      모두 업데이트
                     </button>
                   </div>
                 </div>
@@ -1639,7 +1894,7 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
                       <th className="text-left p-3 font-medium text-slate-600">상태</th>
                       <th className="text-left p-3 font-medium text-slate-600">이름</th>
                       <th className="text-left p-3 font-medium text-slate-600">반</th>
-                      <th className="text-left p-3 font-medium text-slate-600">전화번호</th>
+                      <th className="text-left p-3 font-medium text-slate-600">보호자번호</th>
                       <th className="text-left p-3 font-medium text-slate-600">생년월일</th>
                       <th className="text-left p-3 font-medium text-slate-600">처리</th>
                     </tr>
@@ -1671,10 +1926,10 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
                               className="text-xs px-2 py-1 border border-slate-200 rounded-lg"
                             >
                               <option value="skip">건너뛰기</option>
-                              <option value="overwrite">덮어쓰기</option>
+                              <option value="update">업데이트</option>
                             </select>
                           ) : (
-                            <span className="text-xs text-slate-400">등록 예정</span>
+                            <span className="text-xs text-slate-400">신규 등록</span>
                           )}
                         </td>
                       </tr>
@@ -1687,75 +1942,43 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
 
           {step === 'result' && results && (
             <div className="space-y-6">
-              {/* Result summary */}
               <div className="flex gap-4">
                 <div className="flex-1 bg-green-50 border border-green-200 rounded-xl p-4 text-center">
-                  <div className="text-2xl font-bold text-green-700">
-                    {results.filter(r => r.success && r.created).length}
-                  </div>
+                  <div className="text-2xl font-bold text-green-700">{results.created}</div>
                   <div className="text-sm text-green-600">신규 등록</div>
                 </div>
                 <div className="flex-1 bg-blue-50 border border-blue-200 rounded-xl p-4 text-center">
-                  <div className="text-2xl font-bold text-blue-700">
-                    {results.filter(r => r.success && r.overwritten).length}
-                  </div>
-                  <div className="text-sm text-blue-600">덮어쓰기</div>
+                  <div className="text-2xl font-bold text-blue-700">{results.updated}</div>
+                  <div className="text-sm text-blue-600">업데이트</div>
                 </div>
                 <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-4 text-center">
-                  <div className="text-2xl font-bold text-slate-700">
-                    {results.filter(r => r.skipped).length}
-                  </div>
+                  <div className="text-2xl font-bold text-slate-700">{results.skipped}</div>
                   <div className="text-sm text-slate-600">건너뜀</div>
-                </div>
-                <div className="flex-1 bg-red-50 border border-red-200 rounded-xl p-4 text-center">
-                  <div className="text-2xl font-bold text-red-700">
-                    {results.filter(r => !r.success && !r.skipped).length}
-                  </div>
-                  <div className="text-sm text-red-600">실패</div>
                 </div>
               </div>
 
-              {/* Detail list */}
-              <div className="border border-gray-200 rounded-xl overflow-hidden max-h-[300px] overflow-y-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 sticky top-0">
-                    <tr>
-                      <th className="text-left p-3 font-medium text-slate-600">이름</th>
-                      <th className="text-left p-3 font-medium text-slate-600">결과</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {results.map((result, idx) => (
-                      <tr key={idx}>
-                        <td className="p-3 font-medium text-slate-900">{result.name}</td>
-                        <td className="p-3">
-                          {result.success && result.created && (
-                            <span className="text-green-600">등록 완료</span>
-                          )}
-                          {result.success && result.overwritten && (
-                            <span className="text-blue-600">덮어쓰기 완료</span>
-                          )}
-                          {result.skipped && (
-                            <span className="text-slate-500">건너뜀</span>
-                          )}
-                          {!result.success && !result.skipped && (
-                            <span className="text-red-600">{result.error}</span>
-                          )}
-                        </td>
-                      </tr>
+              {results.errors && results.errors.length > 0 && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
+                    <span className="font-medium text-red-800">오류 발생</span>
+                  </div>
+                  <ul className="text-sm text-red-600 list-disc list-inside">
+                    {results.errors.map((err, idx) => (
+                      <li key={idx}>{err}</li>
                     ))}
-                  </tbody>
-                </table>
-              </div>
+                  </ul>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        <div className="p-6 border-t border-gray-100 flex gap-3">
+        <div className="p-6 border-t border-gray-100 flex justify-end gap-3">
           {step === 'upload' && (
             <button
               onClick={onClose}
-              className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50"
+              className="px-6 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50"
             >
               취소
             </button>
@@ -1763,24 +1986,33 @@ function BulkUploadModal({ classes, onClose, onSuccess, adminUid }) {
           {step === 'preview' && (
             <>
               <button
-                onClick={() => setStep('upload')}
-                className="flex-1 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50"
+                onClick={() => {
+                  setStep('upload');
+                  setFile(null);
+                  setParsedData([]);
+                  setCheckedData([]);
+                  setDuplicateActions({});
+                }}
+                className="px-6 py-2.5 border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50"
               >
-                이전
+                다시 선택
               </button>
               <button
                 onClick={handleSubmit}
                 disabled={loading}
-                className="flex-1 py-2.5 bg-[#00b6b2] text-white rounded-xl font-medium hover:bg-[#009da0] disabled:opacity-50"
+                className="px-6 py-2.5 bg-[#00b6b2] text-white rounded-xl font-medium hover:bg-[#009da0] disabled:opacity-50"
               >
-                {loading ? '처리 중...' : `${checkedData.length}명 등록하기`}
+                {loading ? '처리 중...' : `${newCount + Object.values(duplicateActions).filter(a => a === 'update').length}명 등록하기`}
               </button>
             </>
           )}
           {step === 'result' && (
             <button
-              onClick={onSuccess}
-              className="flex-1 py-2.5 bg-[#00b6b2] text-white rounded-xl font-medium hover:bg-[#009da0]"
+              onClick={() => {
+                onSuccess();
+                onClose();
+              }}
+              className="px-6 py-2.5 bg-[#00b6b2] text-white rounded-xl font-medium hover:bg-[#009da0]"
             >
               완료
             </button>

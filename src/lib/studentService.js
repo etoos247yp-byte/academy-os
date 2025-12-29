@@ -223,6 +223,20 @@ export const batchSetEnrollmentStatus = async (studentIds, isOpen) => {
 };
 
 /**
+ * Batch set change period for multiple students
+ */
+export const batchSetChangePeriod = async (studentIds, startDate, endDate) => {
+  const promises = studentIds.map(id => 
+    updateDoc(doc(db, 'students', id), {
+      changeStartDate: startDate,
+      changeEndDate: endDate,
+      updatedAt: serverTimestamp(),
+    })
+  );
+  await Promise.all(promises);
+};
+
+/**
  * Delete a student
  */
 export const deleteStudent = async (studentId) => {
