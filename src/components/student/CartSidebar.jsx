@@ -102,7 +102,7 @@ export default function CartSidebar({ cart, enrolledCourses = [], onRemove, onSu
             disabled={cart.length === 0 || loading}
             className="w-full mt-6 bg-[#00b6b2] hover:bg-[#009da0] text-white py-3 rounded-xl font-semibold shadow-lg shadow-[#00b6b2]/30 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? '처리 중...' : '신청 확정하기'}
+            {loading ? '처리 중...' : '신청 제출하기'}
           </button>
         </div>
 
